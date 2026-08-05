@@ -11,7 +11,10 @@ export function Slides({ slides }: { slides: string[] }) {
         className="flex min-h-0 flex-1 items-center justify-center overscroll-contain border border-rule p-4"
         onWheel={onWheel}
       >
-        <article className="flex aspect-video w-full max-w-3xl flex-col justify-between border border-rule bg-surface p-6 sm:p-10">
+        <article
+          key={active}
+          className="rise flex aspect-video w-full max-w-3xl flex-col justify-between border border-rule bg-surface p-6 sm:p-10"
+        >
           <span className="label">
             Slide {active + 1} / {slides.length}
           </span>
@@ -22,7 +25,7 @@ export function Slides({ slides }: { slides: string[] }) {
         </article>
       </div>
 
-      <div className="flex shrink-0 gap-2 overflow-x-auto pb-1">
+      <div className="scroll-thin flex shrink-0 gap-2 overflow-x-auto pb-2">
         {slides.map((slide, index) => (
           <button
             key={slide}

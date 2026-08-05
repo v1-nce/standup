@@ -21,6 +21,18 @@ test("sending a request adds it to the conversation", () => {
   expect(screen.getByText("demo on Thursday")).toBeDefined();
 });
 
+test("Enter sends, Shift+Enter does not", () => {
+  render(<Page />);
+  const composer = screen.getByLabelText("What do you need to present?");
+
+  fireEvent.change(composer, { target: { value: "keeps typing" } });
+  fireEvent.keyDown(composer, { key: "Enter", shiftKey: true });
+  expect(screen.queryByText("keeps typing")).toBeNull();
+
+  fireEvent.keyDown(composer, { key: "Enter" });
+  expect(screen.getByText("keeps typing")).toBeDefined();
+});
+
 test("the composer keeps the arrow keys the deck would otherwise take", () => {
   render(<Page />);
 

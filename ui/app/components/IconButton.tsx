@@ -1,6 +1,6 @@
 export function IconButton({
   children,
-  className = "",
+  className = "h-11 w-11 text-ink hover:bg-ink/5",
   label,
   onClick,
   type = "button",
@@ -14,7 +14,7 @@ export function IconButton({
   return (
     <button
       aria-label={label}
-      className={`grid h-11 w-11 shrink-0 place-items-center rounded-sm text-ink transition-colors hover:bg-ink/5 ${className}`}
+      className={`grid shrink-0 place-items-center rounded-sm transition-colors ${className}`}
       onClick={onClick}
       type={type}
     >
@@ -36,4 +36,4 @@ export function IconButton({
 
 export const MenuPath = <path d="M3 6h14M3 10h14M3 14h14" />;
 export const PlusPath = <path d="M10 4v12M4 10h12" />;
-export const UpPath = <path d="M10 16V5M5 10l5-5 5 5" />;
+export const UpPath = <path d="M10 15V5M5 10l5-5 5 5" />;
