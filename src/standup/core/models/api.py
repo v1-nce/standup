@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from standup.core.models.artifacts import Selection
+from standup.core.models.artifacts import Selection, Slide
 
 
 class Health(BaseModel):
@@ -19,14 +19,11 @@ class ModelCheck(BaseModel):
     reply: str
 
 
-class DeckRequest(BaseModel):
-    request: str
-    slide_budget: int = Field(default=5, ge=1)
+class Deck(BaseModel):
+    """A project's one deck: what it will say, and the slides once they are written."""
 
-
-class DeckProposal(BaseModel):
-    deck_id: str
     selection: Selection
+    slides: list[Slide] | None = None
 
 
 class SelectionEdit(BaseModel):

@@ -3,10 +3,13 @@ from functools import lru_cache
 
 from fastapi import APIRouter
 
+from standup.api import jobs, routes
 from standup.config import settings
+from standup.core import agent
+from standup.core.llm import ModelClient
 from standup.core.models import (
-    ChatAppend,
     ChatMessage,
+    ChatSend,
     Project,
     ProjectCreate,
     ProjectRename,
@@ -57,6 +60,13 @@ def read_chat(project_id: str) -> list[ChatMessage]:
     return _chat(project_id).read()
 
 
-@router.post("/{project_id}/chat", status_code=201)
-def append_chat(project_id: str, message: ChatAppend) -> ChatMessage:
-    return _chat(project_id).append(message.role, message.content)
+async def _turn(client: ModelClient, project_id: str, log: ChatLog) -> None:
+    log.append("assistant", await agent.converse(client, get_store(), project_id, log.read()))
+
+
+@router.post("/{project_id}/chat", status_code=202)
+async def send_message(project_id: str, body: ChatSend) -> jobs.Job:
+    log = _chat(project_id)
+    client = routes.get_client()
+    log.append("user", body.content)
+    return jobs.start(project_id, "thinking", _turn(client, project_id, log))

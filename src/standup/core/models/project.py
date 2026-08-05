@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -32,12 +33,15 @@ class ProjectRename(BaseModel):
     name: str
 
 
-class ChatAppend(BaseModel):
-    role: str
+class ChatSend(BaseModel):
+    """What a client may put in the log. Only the person's own words — never a reply."""
+
     content: str
 
 
-class ChatMessage(ChatAppend):
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
     at: datetime
 
 
@@ -45,5 +49,5 @@ class ProjectPaths(BaseModel):
     root: Path
     index: Path
     chat: Path
-    decks: Path
+    deck: Path
     clone: Path

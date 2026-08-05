@@ -1,37 +1,28 @@
-"""Propose a deck, change your mind, then build it."""
+"""A project's one deck. Reading and editing it never calls the model — only the chat does."""
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse
 
-from standup.api.projects import get_store
-from standup.api.routes import get_client
+from standup.api import projects
 from standup.core import pipeline
-from standup.core.models import DeckProposal, DeckRequest, Selection, SelectionEdit
+from standup.core.models import Deck, SelectionEdit
 
-router = APIRouter(prefix="/projects/{project_id}/decks", tags=["decks"])
+router = APIRouter(prefix="/projects/{project_id}/deck", tags=["deck"])
 
 PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
 
-@router.post("", status_code=201)
-async def propose_deck(project_id: str, body: DeckRequest) -> DeckProposal:
-    deck_id, selection = await pipeline.propose(
-        get_client(), get_store(), project_id, body.request, slide_budget=body.slide_budget
-    )
-    return DeckProposal(deck_id=deck_id, selection=selection)
+@router.get("")
+def read_deck(project_id: str) -> Deck:
+    return pipeline.read(projects.get_store(), project_id)
 
 
-@router.get("/{deck_id}")
-def read_selection(project_id: str, deck_id: str) -> Selection:
-    return pipeline.load(get_store(), project_id, deck_id)
+@router.put("/selection")
+def edit_selection(project_id: str, body: SelectionEdit) -> Deck:
+    return pipeline.edit(projects.get_store(), project_id, body.keep)
 
 
-@router.put("/{deck_id}/selection")
-def edit_selection(project_id: str, deck_id: str, body: SelectionEdit) -> Selection:
-    return pipeline.edit(get_store(), project_id, deck_id, body.keep)
-
-
-@router.post("/{deck_id}/build")
-async def build_deck(project_id: str, deck_id: str) -> FileResponse:
-    written = await pipeline.build(get_client(), get_store(), project_id, deck_id)
+@router.get("/file")
+def download_deck(project_id: str) -> FileResponse:
+    written = pipeline.render(projects.get_store(), project_id)
     return FileResponse(written, media_type=PPTX, filename=written.name)

@@ -1,8 +1,9 @@
-"""A Selection becomes a deck: one call for the words, and deterministic work either side of it."""
+"""A Selection becomes a deck. Every function here is deterministic — the words arrive from agent/."""
 
 from standup.core.models import Selection, SlidePlan
 from standup.core.present.deck import build
-from standup.core.present.plan import plan
+from standup.core.present.evidence import evidence
+from standup.core.present.validate import problems
 from standup.errors import InvalidInput
 
 
@@ -18,4 +19,4 @@ def revise(existing: SlidePlan, selection: Selection) -> SlidePlan:
     return SlidePlan(slides=[by_id[item] for item in wanted])
 
 
-__all__ = ["build", "plan", "revise"]
+__all__ = ["build", "evidence", "problems", "revise"]

@@ -1,4 +1,4 @@
-"""The pipeline's spine: index → scope → candidates → briefs → selection → slide plan."""
+"""The pipeline's spine: index → scope → candidates → selection → slide plan."""
 
 from datetime import datetime
 
@@ -58,18 +58,8 @@ class Candidate(BaseModel):
     commits: list[str] = []
 
 
-class Brief(BaseModel):
-    """One candidate examined blind to the others. `evidence` is what validation checks."""
-
-    candidate_id: str
-    what_changed: str
-    why_it_matters: str
-    evidence: list[str] = []
-
-
 class Scored(BaseModel):
     candidate: Candidate
-    brief: Brief | None = None
     signals: dict[str, float] = {}
     score: float
 

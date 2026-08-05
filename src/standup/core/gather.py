@@ -1,30 +1,17 @@
-"""What the request puts in play: one model call for scope, then the index does the rest."""
+"""What a scope puts in play. Deterministic throughout: the scope itself arrives from agent/."""
 
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 
-from standup.core.llm import ModelClient
 from standup.core.models import Candidate, Index, Scope
 from standup.errors import InvalidInput
-
-SYSTEM = """You turn a request for a presentation into a search scope.
-
-Return the scope and nothing else. Do not decide what matters or what belongs on a slide;
-that is decided later, from evidence you cannot see here.
-
-since, until: the time window the request implies. Leave both out if it implies none.
-paths: file or directory fragments the request names. Leave out if it names none.
-keywords: distinctive terms worth matching against code and commit messages. Ordinary
-  words - update, work, stuff, things - are not keywords.
-audience: who the request says the deck is for, if it says at all.
-slide_budget: how many slides were asked for, or the stated default if the request is silent."""
 
 
 def _aware(moment: datetime) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
 
-def _validated(proposed: Scope, index: Index) -> Scope:
+def validated(proposed: Scope, index: Index) -> Scope:
     """Asserted scope, checked against derived facts before anything downstream trusts it."""
     if proposed.since and proposed.until and _aware(proposed.since) > _aware(proposed.until):
         raise InvalidInput("The request's time window ends before it starts")
@@ -54,18 +41,6 @@ def _in_window(moment: datetime, scope: Scope) -> bool:
     if scope.since and moment < _aware(scope.since):
         return False
     return not (scope.until and moment > _aware(scope.until))
-
-
-async def scope(
-    client: ModelClient, request: str, *, index: Index, today: datetime, slide_budget: int
-) -> Scope:
-    proposed = await client.structured(
-        f"Today is {today.date().isoformat()}. The default slide count is {slide_budget}.\n\n"
-        f"Request: {request}",
-        Scope,
-        system=SYSTEM,
-    )
-    return _validated(proposed, index)
 
 
 def candidates(index: Index, scope: Scope) -> list[Candidate]:

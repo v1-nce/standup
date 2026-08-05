@@ -7,11 +7,11 @@ from standup.config import settings
 from standup.core import llm
 from standup.core.llm import ModelClient
 from standup.core.models import Health, ModelCheck, ModelStatus
-from standup.errors import InvalidInput, NotConfigured, NotFound, Upstream
+from standup.errors import Busy, InvalidInput, NotConfigured, NotFound, Upstream
 
 router = APIRouter()
 
-STATUS = {NotFound: 404, InvalidInput: 400, NotConfigured: 503, Upstream: 502}
+STATUS = {NotFound: 404, InvalidInput: 400, Busy: 409, NotConfigured: 503, Upstream: 502}
 
 
 async def handle_error(request: Request, exc: Exception) -> JSONResponse:
@@ -42,6 +42,5 @@ def model_status() -> ModelStatus:
 
 @router.post("/model/check")
 async def model_check() -> ModelCheck:
-    # Roomy enough that a thinking model still has budget left to answer in.
     reply = await get_client().text("Reply with the single word: ready", max_tokens=256)
     return ModelCheck(ok=True, reply=reply.strip())

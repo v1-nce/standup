@@ -1,13 +1,11 @@
 from standup.core.models.api import (
-    DeckProposal,
-    DeckRequest,
+    Deck,
     Health,
     ModelCheck,
     ModelStatus,
     SelectionEdit,
 )
 from standup.core.models.artifacts import (
-    Brief,
     Candidate,
     Commit,
     FileFacts,
@@ -20,8 +18,8 @@ from standup.core.models.artifacts import (
     Symbol,
 )
 from standup.core.models.project import (
-    ChatAppend,
     ChatMessage,
+    ChatSend,
     Project,
     ProjectCreate,
     ProjectPaths,
@@ -31,13 +29,11 @@ from standup.core.models.project import (
 )
 
 __all__ = [
-    "Brief",
     "Candidate",
-    "ChatAppend",
     "ChatMessage",
+    "ChatSend",
     "Commit",
-    "DeckProposal",
-    "DeckRequest",
+    "Deck",
     "FileFacts",
     "Health",
     "Index",

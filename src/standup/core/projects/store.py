@@ -46,7 +46,7 @@ class ProjectStore:
             root=root,
             index=root / "index",
             chat=root / "chat",
-            decks=root / "decks",
+            deck=root / "deck",
             clone=root / "clone",
         )
 
@@ -57,7 +57,7 @@ class ProjectStore:
         if paths.root.exists():
             raise InvalidInput(f"{location} is already registered as {project_id}")
 
-        for directory in (paths.root, paths.index, paths.chat, paths.decks):
+        for directory in (paths.root, paths.index, paths.chat, paths.deck):
             directory.mkdir(parents=True)
 
         try:
