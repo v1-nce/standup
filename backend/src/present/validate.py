@@ -1,0 +1,52 @@
+"""The trust boundary: a plan that drifts from the selection, or names what does not exist, is refused."""
+
+import re
+from pathlib import PurePosixPath
+
+from models import Index, Selection, SlidePlan
+
+_TOKEN = re.compile(r"[A-Za-z0-9_./-]+")
+_CALL = re.compile(r"\b([A-Za-z_]\w*)\s*\(\)")
+
+
+def _named_files(text: str, suffixes: set[str]) -> set[str]:
+    """Only tokens carrying an extension the project actually uses. `e.g.` is prose, not a file."""
+    return {
+        token.strip("./")
+        for token in _TOKEN.findall(text)
+        if PurePosixPath(token).suffix in suffixes
+    }
+
+
+def _known(named: str, paths: set[str]) -> bool:
+    return any(path == named or path.endswith(f"/{named}") for path in paths)
+
+
+def problems(plan: SlidePlan, selection: Selection, index: Index) -> list[str]:
+    """Everything wrong with a plan. Empty means it can be trusted."""
+    faults = []
+
+    expected = [entry.candidate.id for entry in selection.chosen]
+    actual = [slide.candidate_id for slide in plan.slides]
+    if actual != expected:
+        faults.append(f"the slides must be exactly {expected}, in that order, but were {actual}")
+
+    # A file deleted in the window can be selected, so history counts as existing too.
+    paths = {facts.path for facts in index.files}
+    paths |= {path for commit in index.commits for path in commit.changes}
+    suffixes = {PurePosixPath(path).suffix for path in paths} - {""}
+    symbols = {symbol.name for facts in index.files for symbol in facts.symbols}
+
+    for slide in plan.slides:
+        for text in (slide.title, *slide.bullets):
+            faults += [
+                f"{slide.candidate_id}: there is no file {named!r}"
+                for named in _named_files(text, suffixes)
+                if not _known(named, paths)
+            ]
+            faults += [
+                f"{slide.candidate_id}: there is no {name!r} in this project"
+                for name in _CALL.findall(text)
+                if name not in symbols
+            ]
+    return faults

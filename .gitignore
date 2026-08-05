@@ -1,0 +1,36 @@
+# Secrets — every .env variant, but keep the template
+.env*
+!.env.example
+
+# Environments
+.venv/
+venv/
+
+# Caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+node_modules/
+.next/
+out/
+
+# Local project index, artifacts and decks
+.standup/
+
+# The deck README's build step writes here. Not *.pptx — the layout template is source.
+/deck.pptx
+
+# Editors
+.vscode/
+.idea/
+.claude/settings.local.json
+
+docs/
+
+.DS_Store
+Thumbs.db
