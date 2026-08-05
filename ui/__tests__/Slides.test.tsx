@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 import { Slides } from "../app/components/Slides";
 import { deck } from "./fixtures";
@@ -27,7 +27,15 @@ test("arrow keys walk the deck and stop at both ends", () => {
 
 test("a slide shows the bullets behind it", () => {
   render(<Slides deck={DECK} />);
-  expect(screen.getByText("First changed")).toBeDefined();
+  // Thumbnails render the same faces, so scope to the stage — the only one in the a11y tree.
+  expect(within(screen.getByRole("article")).getByText("First changed")).toBeDefined();
+});
+
+test("a thumbnail is a miniature of its slide, not a placeholder", () => {
+  render(<Slides deck={DECK} />);
+
+  const thumb = screen.getByRole("button", { name: "Slide 2: Second" });
+  expect(thumb.textContent).toContain("Second changed");
 });
 
 test("a shorter deck cannot strand the pick past its end", () => {

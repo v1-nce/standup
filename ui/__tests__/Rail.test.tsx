@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { Rail } from "../app/components/Rail";
 import type { Projects } from "../app/hooks/useProjects";
@@ -8,6 +8,7 @@ function show(overrides: Partial<Projects> = {}, onSelect = vi.fn()) {
   const projects: Projects = {
     projects: [project("a-1", "standup"), project("b-2", "flask")],
     error: null,
+    create: vi.fn(() => Promise.resolve(project("c-3", "flask"))),
     rename: vi.fn(() => Promise.resolve()),
     remove: vi.fn(() => Promise.resolve()),
     ...overrides,
@@ -58,6 +59,44 @@ test("deleting asks first, and a refusal changes nothing", () => {
   vi.stubGlobal("confirm", vi.fn(() => true));
   fireEvent.click(screen.getByRole("button", { name: "Delete standup" }));
   expect(projects.remove).toHaveBeenCalledWith("a-1");
+});
+
+const startNaming = () => {
+  fireEvent.click(screen.getByRole("button", { name: "+ New project" }));
+  return screen.getByLabelText("Name the new project");
+};
+
+test("creating hands over the trimmed name and opens what it made", async () => {
+  const { onSelect, projects } = show();
+
+  const field = startNaming();
+  fireEvent.change(field, { target: { value: "  Sprint demo  " } });
+  fireEvent.keyDown(field, { key: "Enter" });
+
+  expect(projects.create).toHaveBeenCalledWith("Sprint demo");
+  await waitFor(() => expect(onSelect).toHaveBeenCalledWith("c-3"));
+});
+
+test("escape abandons naming", () => {
+  const { projects } = show();
+
+  fireEvent.keyDown(startNaming(), { key: "Escape" });
+
+  expect(projects.create).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "+ New project" })).toBeDefined();
+});
+
+test("a name the backend rejects stays on screen to be corrected", async () => {
+  const { projects } = show({ create: vi.fn(() => Promise.resolve(null)) });
+
+  const field = startNaming();
+  fireEvent.change(field, { target: { value: "nope" } });
+  fireEvent.keyDown(field, { key: "Enter" });
+
+  expect(projects.create).toHaveBeenCalledWith("nope");
+  await waitFor(() =>
+    expect(screen.getByLabelText("Name the new project")).toHaveProperty("value", "nope"),
+  );
 });
 
 test("a failed read is reported, not swallowed", () => {

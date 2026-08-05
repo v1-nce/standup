@@ -2,6 +2,7 @@
 
 import type { Project } from "@/app/api/client";
 import { IconButton, MenuPath } from "@/app/components/IconButton";
+import { NewProject } from "@/app/components/NewProject";
 import { ProjectRow } from "@/app/components/ProjectRow";
 import type { Projects } from "@/app/hooks/useProjects";
 
@@ -10,7 +11,7 @@ export function Rail({
   onSelect,
   onToggle,
   open,
-  projects: { error, projects, remove, rename },
+  projects: { create, error, projects, remove, rename },
   selectedId,
 }: {
   onSelect: (id: string) => void;
@@ -19,6 +20,12 @@ export function Rail({
   projects: Projects;
   selectedId: string | null;
 }) {
+  const register = (name: string) =>
+    create(name).then((made) => {
+      if (made) onSelect(made.id);
+      return made;
+    });
+
   const confirmDelete = (project: Project) => {
     if (!window.confirm(`Delete ${project.name}? Everything derived from it goes too.`)) return;
     void remove(project.id);
@@ -38,9 +45,7 @@ export function Rail({
       </div>
 
       <div className="min-w-60 shrink-0 px-3 pb-3">
-        <button className="w-full border border-ink px-3 py-2 text-center font-mono text-xs transition-colors hover:bg-ink/5">
-          + Register a project
-        </button>
+        <NewProject onCreate={register} />
       </div>
 
       <nav className="scroll-thin flex min-h-0 min-w-60 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3">

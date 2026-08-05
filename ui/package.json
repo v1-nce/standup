@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && npm run stage",
-    "stage": "node -e \"require('fs').cpSync('out','../src/standup/web',{recursive:true,force:true})\"",
+    "stage": "node -e \"const fs=require('fs'),to='../src/standup/web';fs.rmSync(to,{recursive:true,force:true});fs.cpSync('out',to,{recursive:true})\"",
     "lint": "eslint",
     "test": "vitest run"
   },

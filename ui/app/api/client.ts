@@ -39,6 +39,9 @@ export const reason = (failure: unknown): string =>
 export const api = {
   listProjects: (): Promise<Project[]> => request("/projects").then((r) => r.json()),
 
+  createProject: (name: string): Promise<Project> =>
+    request("/projects", { method: "POST", body: JSON.stringify({ name }) }).then((r) => r.json()),
+
   renameProject: (id: string, name: string): Promise<Project> =>
     request(project(id), { method: "PATCH", body: JSON.stringify({ name }) }).then((r) => r.json()),
 

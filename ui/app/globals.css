@@ -53,6 +53,22 @@ body {
   letter-spacing: 0.06em;
 }
 
+/* The rail's inline fields: renaming a project in place, and registering a new one. Both are
+   autofocused and outlined by their own border, so neither wants the global focus ring. */
+.field {
+  width: 100%;
+  border: 1px solid var(--ink);
+  background: var(--surface);
+  padding: 0.375rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.field:disabled {
+  color: var(--muted);
+}
+
 .figure {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

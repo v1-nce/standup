@@ -273,7 +273,10 @@ export interface components {
             /** Via Gateway */
             via_gateway: boolean;
         };
-        /** Project */
+        /**
+         * Project
+         * @description `source` is what the project was given to talk about. None until something is attached.
+         */
         Project: {
             /** Id */
             id: string;
@@ -284,14 +287,12 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            source: components["schemas"]["Source"];
+            source?: components["schemas"]["Source"] | null;
         };
         /** ProjectCreate */
         ProjectCreate: {
             /** Name */
             name: string;
-            /** Location */
-            location: string;
         };
         /** ProjectRename */
         ProjectRename: {

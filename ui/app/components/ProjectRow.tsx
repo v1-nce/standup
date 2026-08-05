@@ -33,7 +33,7 @@ export function ProjectRow({
       <input
         autoFocus
         aria-label={`Rename ${project.name}`}
-        className="w-full border border-ink bg-surface px-3 py-1.5 font-mono text-sm outline-none"
+        className="field"
         defaultValue={project.name}
         onBlur={(event) => commit(event.currentTarget.value)}
         onKeyDown={(event) => {

@@ -24,6 +24,14 @@ export function useProjects() {
   return {
     projects,
     error,
+    create: (name: string): Promise<Project | null> =>
+      api
+        .createProject(name)
+        .then((made) => after().then(() => made))
+        .catch((failure) => {
+          setError(reason(failure));
+          return null;
+        }),
     rename: (id: string, name: string) => after(api.renameProject(id, name)),
     remove: (id: string) => after(api.deleteProject(id)),
   };
