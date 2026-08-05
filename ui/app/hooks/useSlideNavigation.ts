@@ -8,6 +8,7 @@ const MIN_DELTA = 8;
 export function useSlideNavigation(count: number) {
   const [active, setActive] = useState(0);
   const lastStep = useRef(0);
+  const strip = useRef<HTMLDivElement>(null);
 
   const step = useCallback(
     (delta: number) => setActive((index) => Math.min(count - 1, Math.max(0, index + delta))),
@@ -36,5 +37,12 @@ export function useSlideNavigation(count: number) {
     [step],
   );
 
-  return { active, setActive, onWheel };
+  useEffect(() => {
+    const list = strip.current;
+    if (!list?.contains(document.activeElement)) return;
+    const thumb = list.children[active];
+    if (thumb instanceof HTMLElement) thumb.focus();
+  }, [active]);
+
+  return { active, setActive, onWheel, strip };
 }

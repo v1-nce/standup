@@ -33,6 +33,23 @@ test("Enter sends, Shift+Enter does not", () => {
   expect(screen.getByText("keeps typing")).toBeDefined();
 });
 
+test("focus follows the selection, but only from inside the deck strip", () => {
+  render(<Page />);
+  const [first, second] = screen.getAllByRole("button", { name: /^Slide \d/ });
+
+  first.focus();
+  fireEvent.keyDown(window, { key: "ArrowRight" });
+  expect(document.activeElement).toBe(second);
+
+  expect(second.tabIndex).toBe(0);
+  expect(first.tabIndex).toBe(-1);
+
+  const composer = screen.getByLabelText("What do you need to present?");
+  composer.focus();
+  fireEvent.keyDown(window, { key: "ArrowRight" });
+  expect(document.activeElement).toBe(composer);
+});
+
 test("the composer keeps the arrow keys the deck would otherwise take", () => {
   render(<Page />);
 

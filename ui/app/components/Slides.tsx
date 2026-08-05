@@ -3,7 +3,7 @@
 import { useSlideNavigation } from "@/app/hooks/useSlideNavigation";
 
 export function Slides({ slides }: { slides: string[] }) {
-  const { active, setActive, onWheel } = useSlideNavigation(slides.length);
+  const { active, setActive, onWheel, strip } = useSlideNavigation(slides.length);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col gap-3">
@@ -25,18 +25,19 @@ export function Slides({ slides }: { slides: string[] }) {
         </article>
       </div>
 
-      <div className="scroll-thin flex shrink-0 gap-2 overflow-x-auto pb-2">
+      <div ref={strip} className="scroll-thin flex shrink-0 gap-2 overflow-x-auto pb-2">
         {slides.map((slide, index) => (
           <button
             key={slide}
             aria-current={index === active}
             aria-label={`Slide ${index + 1}: ${slide}`}
-            className={`aspect-video w-24 shrink-0 border p-1.5 text-left transition-colors sm:w-28 ${
+            className={`aspect-video w-24 shrink-0 border p-1.5 text-left transition-colors focus-visible:outline-none sm:w-28 ${
               index === active
                 ? "border-accent bg-surface"
-                : "border-rule text-muted hover:border-ink"
+                : "border-rule text-muted hover:border-muted"
             }`}
             onClick={() => setActive(index)}
+            tabIndex={index === active ? 0 : -1}
           >
             <span className="figure text-[0.625rem]">{index + 1}</span>
           </button>

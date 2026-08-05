@@ -106,9 +106,10 @@ body {
   }
 }
 
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
