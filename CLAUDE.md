@@ -13,7 +13,7 @@ Two model calls in the steady state — one to read the request, one to plan the
 Verified 2026-08-05. **Backend: 122 tests. Frontend: 7.** Both in CI.
 
 - **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (scope call + candidates), selection (five signals, weights, MMR), present (plan call, groundedness validation, `.pptx`), the project store and chat log, the provider seam over Anthropic and Gemini, and the HTTP API over all of it.
-- **Scaffolding only** — the frontend is one screen that reports model status; the composer is inert.
+- **Shell only** — the GUI has its rail, conversation, composer and slide stage with keyboard and wheel navigation, and reaches no backend. The composer echoes locally; `PROJECTS`, `SLIDES` and `MESSAGES` are placeholder data in one file, to be deleted when the API lands.
 - **Not built** — diagrams, SSE, prompt caching, briefs (`Scored.brief` is always `None`), every benchmark, packaging.
 - **Never measured** — every tuning constant. `LAMBDA = 0.7`, the whole `WEIGHTS` table, `MAX_COMMITS`, `MIN_NAME_LENGTH` are guesses standing in until the quality benchmark exists.
 
@@ -21,8 +21,9 @@ Verified 2026-08-05. **Backend: 122 tests. Frontend: 7.** Both in CI.
 
 ## Stack
 
-Chosen 2026-08-02, grounded in [docs/RESEARCH.md](docs/RESEARCH.md). Two services. Rows marked
-**Not built** are decisions on record, not claims about the code.
+Chosen 2026-08-02, grounded in [docs/RESEARCH.md](docs/RESEARCH.md). **One installable package**;
+the GUI is source that compiles into it, not a second service. Rows marked **Not built** are
+decisions on record, not claims about the code.
 
 **GUI source — [ui/](ui/)**, which `npm run build` stages into `src/standup/web/`
 
@@ -72,7 +73,7 @@ Standup is installed and run on the user's own machine. It cannot call a model u
 | **Bring your own key** | The user pastes a provider key. Requests go straight to that provider. We never see the traffic and earn nothing. | User → provider |
 | **Subscription** | The user signs in. Requests route through our hosted gateway, which holds the real key. | User → us; we earn the margin |
 
-Both live behind one interface in `src/llm/`. **Nothing outside that folder knows which path is active** — not the stages, not the pipeline, not the API. Errors from both are mapped to the same typed failures, or the abstraction leaks the first time a subscription lapses.
+Both live behind one interface in `src/standup/core/llm/`. **Nothing outside that folder knows which path is active** — not the stages, not the pipeline, not the API. Errors from both are mapped to the same typed failures, or the abstraction leaks the first time a subscription lapses.
 
 Subscription is the frictionless default and the revenue; BYOK is not a grudging fallback and must not rot. If a change makes one path work and the other break, it isn't done.
 
@@ -88,7 +89,7 @@ Subscription is the frictionless default and the revenue; BYOK is not a grudging
 
 **Storage** — content-hash keyed files; JSON for the editable selection artifact. A project's index persists between decks: indexing is amortised across months of use, not repeated per deck. No database until one is needed.
 
-**Tooling** — ruff and pytest on the backend, Vitest on the frontend, both wired into CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)). uv and pnpm are the intent and neither is in use: the backend runs on `venv` + `pip -r requirements.txt`, the frontend on npm, because `corepack enable` needs administrator rights on the development machine. No Docker anywhere — users must never need it, and nothing here does. Shipping is a separate problem and is unsolved — see open question 1.
+**Tooling** — ruff and pytest on the package, Vitest and ESLint on the GUI, all wired into CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)). Dependencies and the `standup` entry point live in [pyproject.toml](pyproject.toml); install with `pip install -e ".[dev]"`. uv and pnpm are the intent and neither is in use: `venv` + pip, and npm, because `corepack enable` needs administrator rights on the development machine. No Docker anywhere — users must never need it, and nothing here does. Shipping is a separate problem and is unsolved — see open question 1.
 
 ### Deliberately excluded
 
@@ -123,6 +124,8 @@ The rules below exist to defeat both. A change that fixes one by causing the oth
 - **Boundaries are contracts, not conventions.** The analysis core imports nothing from FastAPI or the web layer. The frontend reaches the backend only through generated types. A cross-boundary import is a design error, not a shortcut.
 - **Extension is addition.** A new importance signal, renderer, or language should be a new file plus one line in a registry. If it needs edits in five files, the seam is missing — build the seam, then add the thing.
 - **Modules declare their contract.** Typed inputs, typed outputs, and one sentence saying what the module owns. If that sentence needs an "and", the module does two things.
+- **Dependencies point at contracts, not at data.** A module declares the shape it needs; whatever supplies it conforms. If a component imports its prop type from the mock-data file, deleting the mock breaks the component — the arrow is backwards.
+- **One file, one thing — the GUI too.** A component file holding four other components is a directory nobody made yet. Composition lives in the page; rendering lives in a component; behaviour with its own rules — a throttle, a key handler, a clamp — lives in a hook. A 200-line page passes the 300-line check and is still wrong.
 - **Depth is a smell.** A file past ~300 lines, a function past ~50, a call chain past three hops. None are illegal; all mean stop and look. Usually two concepts are sharing a home.
 
 ### Comments and docstrings — minimal
@@ -139,7 +142,8 @@ If a comment is needed to explain what the code does, rename things until it isn
 ### Completeness
 
 - **A caveat is a defect, not a disclaimer.** "This works, except…" means it is not done. Fix it, or cut the scope until the sentence is unnecessary. Scope may be small; it may not be leaky.
-- **No silent partial handling.** An unsupported case raises. Never a wrong answer, never a quiet default, never a fallback that hides the failure.
+- **No silent partial handling.** An unsupported case raises. Never a wrong answer, never a quiet default, never a fallback that hides the failure. In the GUI this means no unwired seam: an optional callback nothing passes is a dead control that looks alive.
+- **A cast is where type-checking stops.** `as`, `# type: ignore`, `any` — each one is a claim the compiler now takes on trust, and it is exactly where the bug hides. Narrow with a real check instead; if you must assert, say why in one line.
 - **Delete what you replace.** The old path goes in the same change. No dead code, no commented-out blocks, no "kept just in case" — git is the just-in-case.
 - **Every non-trivial change leaves a check behind** — the smallest thing that fails if the logic breaks. Verified means executed, not reasoned about.
 
@@ -195,9 +199,9 @@ Budgets for cost, latency, and memory get set from real measurement, not estimat
 
 | # | Question | What it changes |
 |---|---|---|
-| 1 | **How does this ship as one command?** | Two services, a Python runtime, a Node build and a `d2` binary do not install with one command today. **The frontend half is settled**: [docs/UIUX.md](docs/UIUX.md) says `standup` opens a browser from one process, so Next.js is a static export and always will be. The packaging half is untouched — how the Python runtime, the built assets and `d2` arrive on a stranger's machine from one line. |
+| 1 | **How does this ship as one command?** | A Python runtime, a Node build and a `d2` binary do not install with one command today, even though the package itself now does. **The frontend half is settled**: [docs/UIUX.md](docs/UIUX.md) says `standup` opens a browser from one process, so Next.js is a static export and always will be. The packaging half is untouched — how the Python runtime, the built assets and `d2` arrive on a stranger's machine from one line. |
 | 2 | **How long until a new user's first deck?** | Every deck after the first is cheap because the project is indexed. The first is not, and it lands exactly where someone decides whether to keep the tool — Gamma manages nothing-to-deck in under a minute. Indexing the recent window before the full history would help; nothing is measured. |
-| 3 | Is BYOK single-provider or multi-provider? | Whether `src/llm/` normalises across wire formats or only ever speaks Anthropic. Presenton supports four; supporting one is far cheaper and may be enough. |
+| 3 | Is BYOK single-provider or multi-provider? | Whether `src/standup/core/llm/` normalises across wire formats or only ever speaks Anthropic. Presenton supports four; supporting one is far cheaper and may be enough. |
 | 4 | What does the gateway retain, and what do we tell users? | The subscription path routes their code through us. The answer is a product promise before it is a schema. |
 | 5 | Does gathering need semantic retrieval, or is structural narrowing enough? | Whether embeddings and a retrieval layer come back in — see Deliberately excluded |
 | 6 | What is ground truth for a recurring update? | Whether selection quality is measurable at all in the primary use case |
