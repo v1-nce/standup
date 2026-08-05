@@ -2,7 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from standup.api import projects as projects_api
+from standup.api import routes
 from standup.api.app import app
+from standup.config import settings
 from standup.core.projects import ProjectStore
 
 
@@ -70,17 +72,24 @@ def test_delete(client, codebase):
     assert client.get("/projects").json() == []
 
 
-def test_chat_history(client, codebase):
+def test_chat_starts_empty(client, codebase):
     project_id = client.post(
         "/projects", json={"name": "Chatty", "location": str(codebase)}
     ).json()["id"]
-
     assert client.get(f"/projects/{project_id}/chat").json() == []
-    posted = client.post(
-        f"/projects/{project_id}/chat", json={"role": "user", "content": "standup tomorrow"}
-    )
-    assert posted.status_code == 201
-    assert posted.json()["at"]
 
-    history = client.get(f"/projects/{project_id}/chat").json()
-    assert [m["content"] for m in history] == ["standup tomorrow"]
+
+def test_sending_a_message_without_a_model_is_refused_before_it_is_logged(
+    client, codebase, monkeypatch
+):
+    monkeypatch.setattr(settings, "llm_provider", "")
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    monkeypatch.setattr(settings, "gemini_api_key", "")
+    routes.get_client.cache_clear()
+
+    project_id = client.post(
+        "/projects", json={"name": "Quiet", "location": str(codebase)}
+    ).json()["id"]
+
+    assert client.post(f"/projects/{project_id}/chat", json={"content": "hi"}).status_code == 503
+    assert client.get(f"/projects/{project_id}/chat").json() == []

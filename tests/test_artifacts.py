@@ -4,7 +4,6 @@ import pytest
 from pydantic import ValidationError
 
 from standup.core.models import (
-    Brief,
     Candidate,
     Commit,
     FileFacts,
@@ -25,17 +24,7 @@ def selection():
         request="standup tomorrow, the auth thing, three slides",
         scope=Scope(since=datetime(2026, 8, 1, tzinfo=UTC), keywords=["auth"], slide_budget=3),
         chosen=[
-            Scored(
-                candidate=candidate,
-                brief=Brief(
-                    candidate_id="auth",
-                    what_changed="Sessions moved to signed tokens",
-                    why_it_matters="Removes the shared session store",
-                    evidence=["src/auth.py", "abc"],
-                ),
-                signals={"churn": 0.8, "rank": 0.4},
-                score=0.62,
-            )
+            Scored(candidate=candidate, signals={"churn": 0.8, "rank": 0.4}, score=0.62)
         ],
         cut=[Scored(candidate=Candidate(id="readme", title="README tidy"), score=0.03)],
     )

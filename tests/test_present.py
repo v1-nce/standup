@@ -16,25 +16,11 @@ from standup.core.models import (
     SlidePlan,
     Symbol,
 )
-from standup.core.present import build, plan, revise
+from standup.core.present import build, evidence, revise
 from standup.core.present.validate import problems
-from standup.errors import InvalidInput, Upstream
+from standup.errors import InvalidInput
 
 TODAY = datetime(2026, 8, 3, tzinfo=UTC)
-
-
-class StubClient:
-    """Returns each reply in turn, and remembers every prompt it was given."""
-
-    def __init__(self, *replies: SlidePlan) -> None:
-        self.replies = list(replies)
-        self.prompts: list[str] = []
-        self.system: str | None = None
-
-    async def structured(self, prompt, schema, *, system=None, max_tokens=None):
-        self.prompts.append(prompt)
-        self.system = system
-        return self.replies.pop(0)
 
 
 @pytest.fixture
@@ -149,50 +135,21 @@ def test_prose_that_merely_looks_like_a_path_is_left_alone(selection, index):
     assert problems(drafted, selection, index) == []
 
 
-async def test_the_model_sees_the_evidence_but_not_the_scores_or_the_cut(selection, index):
-    client = StubClient(good_plan())
-    await plan(client, selection, index)
-    prompt = client.prompts[0]
+def test_evidence_carries_the_commits_but_never_the_scores_or_the_cut(selection, index):
+    cited = evidence(selection, index)
 
-    assert "signed tokens replace the session store" in prompt
-    assert "the team" in prompt
-    assert "docs/notes.md" not in prompt
+    assert "signed tokens replace the session store" in cited
+    assert "src/auth.py" in cited and "src/billing.py" in cited
+    assert "docs/notes.md" not in cited
     for banned in ("2.4", "0.3", "churn"):
-        assert banned not in prompt
+        assert banned not in cited
 
 
-async def test_the_audience_reaches_the_prompt_only_when_the_scope_found_one(selection, index):
-    stated = StubClient(good_plan())
-    await plan(stated, selection, index)
-    assert "Audience: the team" in stated.prompts[0]
-
-    selection.scope.audience = None
-    quiet = StubClient(good_plan())
-    await plan(quiet, selection, index)
-    assert "Audience" not in quiet.prompts[0]
-
-
-async def test_a_deleted_file_can_still_be_written_about(selection, index):
+def test_a_deleted_file_can_still_be_written_about(selection, index):
     index.files = [facts for facts in index.files if facts.path != "src/auth.py"]
     drafted = good_plan()
     drafted.slides[0].bullets = ["src/auth.py was removed"]
     assert problems(drafted, selection, index) == []
-
-
-async def test_a_bad_plan_is_sent_back_once_with_what_was_wrong(selection, index):
-    broken = SlidePlan(slides=[Slide(candidate_id="src/auth.py", title="Only one")])
-    client = StubClient(broken, good_plan())
-
-    assert await plan(client, selection, index) == good_plan()
-    assert len(client.prompts) == 2
-    assert "rejected" in client.prompts[1]
-
-
-async def test_a_plan_that_stays_wrong_fails_closed(selection, index):
-    broken = SlidePlan(slides=[Slide(candidate_id="src/auth.py", title="Only one")])
-    client = StubClient(broken, broken)
-    with pytest.raises(Upstream, match="could not be grounded"):
-        await plan(client, selection, index)
 
 
 def test_removing_and_reordering_a_selection_costs_no_model_call(selection):

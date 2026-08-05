@@ -23,7 +23,7 @@ def test_create_lays_out_the_project(store, codebase):
     assert project.source.kind == "local"
     assert project.source.has_git is True
     assert (paths.root / "project.json").is_file()
-    for directory in (paths.index, paths.chat, paths.decks):
+    for directory in (paths.index, paths.chat, paths.deck):
         assert directory.is_dir()
 
 
