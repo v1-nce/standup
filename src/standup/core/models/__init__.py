@@ -25,6 +25,7 @@ from standup.core.models.project import (
     Project,
     ProjectCreate,
     ProjectPaths,
+    ProjectRename,
     Source,
     SourceKind,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "Project",
     "ProjectCreate",
     "ProjectPaths",
+    "ProjectRename",
     "Scope",
     "Scored",
     "Selection",

@@ -1,7 +1,18 @@
 # API
 
-13 endpoints. Base URL `http://127.0.0.1:8000`. Every error body is `{"detail": str}`; a
-malformed request body is `422`.
+18 endpoints — 15 now, 3 later. Base URL `http://127.0.0.1:8000`. Every error body is
+`{"detail": str}`; a malformed request body is `422`.
+
+A project holds one deck, one conversation, and the resources it was given. A deck is created
+only by sending a message.
+
+Anything that calls the model runs in the background: the request returns `202 {"job_id"}`, the
+client polls `GET /jobs/{job_id}` until the state leaves `running`, then re-reads whatever the
+job touched. Only failures that can be seen before the work starts — no project, no key — come
+back on the original request; everything else surfaces as a failed job.
+
+Endpoints marked **new**, **changed** or **later** are proposed and do not exist in the code yet;
+the rest ship today.
 
 ---
 
@@ -82,7 +93,21 @@ malformed request body is `422`.
 
 ---
 
-## 7. Delete project
+## 7. Rename project — **new**
+
+    Description: Changes a project's display name, leaving its id and everything derived from
+                 it untouched.
+    Endpoint:    PATCH /projects/{project_id}
+    Input:            {
+                        "name": str
+                      }
+    Outputs:     200  Project
+                 400  empty name
+                 404  no such project
+
+---
+
+## 8. Delete project
 
     Description: Deletes a project and everything derived from it.
     Endpoint:    DELETE /projects/{project_id}
@@ -92,45 +117,65 @@ malformed request body is `422`.
 
 ---
 
-## 8. Read chat
+## 9. Read chat
 
     Description: Reads the project's conversation, oldest first.
     Endpoint:    GET /projects/{project_id}/chat
     Input:       none
-    Outputs:     200  [ChatMessage]
-                 404  no such project
-
----
-
-## 9. Append chat
-
-    Description: Appends one message to the project's conversation.
-    Endpoint:    POST /projects/{project_id}/chat
-    Input:            {
-                        "role":    str,
-                        "content": str
-                      }
-    Outputs:     201  ChatMessage {
-                        "role":    str,
+    Outputs:     200  [ChatMessage {
+                        "role":    "user" | "assistant",
                         "content": str,
                         "at":      datetime
-                      }
+                      }]
                  404  no such project
 
 ---
 
-## 10. Propose deck
+## 10. Send a message — **changed**
 
-    Description: Turns a request into a selection of what belongs on the slides, using one
-                 model call.
-    Endpoint:    POST /projects/{project_id}/decks
+    Description: Appends the message and starts answering it, rebuilding the project's deck if
+                 the message asked for one.
+    Endpoint:    POST /projects/{project_id}/chat
     Input:            {
-                        "request":      str,
-                        "slide_budget": int >= 1   (default 5)
+                        "content": str
                       }
-    Outputs:     201  {
-                        "deck_id":   str,
-                        "selection": Selection
+    Outputs:     202  {"job_id": str}
+                 404  no such project
+                 409  this project is already working
+                 503  no key configured
+
+---
+
+## 11. Job status — **new**
+
+    Description: Reports how a background job is going, and why it failed if it did.
+    Endpoint:    GET /jobs/{job_id}
+    Input:       none
+    Outputs:     200  {
+                        "id":      str,
+                        "state":   "running" | "done" | "failed",
+                        "step":    str,
+                        "detail":  str | null
+                      }
+                 404  no such job
+
+---
+
+## 12. Read deck — **changed**
+
+    Description: Reads the project's deck: what was chosen, what was cut, and the slides once
+                 it is built.
+    Endpoint:    GET /projects/{project_id}/deck
+    Input:       none
+    Outputs:     200  Deck {
+                        "selection": Selection,
+                        "slides":    [Slide] | null
+                      }
+
+                      Slide {
+                        "candidate_id": str,
+                        "title":        str,
+                        "bullets":      [str]
                       }
 
                       Selection {
@@ -164,44 +209,80 @@ malformed request body is `422`.
                         },
                         "score": float
                       }
-                 400  the window is impossible, or the project has no git history
-                 404  no such project
-                 502  scope call failed
-                 503  no key configured
+                 404  no such project, or no deck yet
 
 ---
 
-## 11. Read selection
-
-    Description: Re-reads a proposed selection without recomputing it.
-    Endpoint:    GET /projects/{project_id}/decks/{deck_id}
-    Input:       none
-    Outputs:     200  Selection
-                 404  no such project or deck
-
----
-
-## 12. Edit selection
+## 13. Edit selection — **changed**
 
     Description: Replaces the selection with the given ids in the given order, applied
-                 literally.
-    Endpoint:    PUT /projects/{project_id}/decks/{deck_id}/selection
+                 literally and without a model call.
+    Endpoint:    PUT /projects/{project_id}/deck/selection
     Input:            {
                         "keep": [str]
                       }
-    Outputs:     200  Selection
+    Outputs:     200  Deck
                  404  no such project, deck, or candidate id
 
 ---
 
-## 13. Build deck
+## 14. Build deck — **changed**
 
-    Description: Writes the slides and returns the deck file, using one model call unless the
+    Description: Starts writing the slides and the `.pptx`, using one model call unless the
                  edit only dropped or reordered.
-    Endpoint:    POST /projects/{project_id}/decks/{deck_id}/build
+    Endpoint:    POST /projects/{project_id}/deck/build
+    Input:       none
+    Outputs:     202  {"job_id": str}
+                 404  no such project, or no deck yet
+                 409  this project is already working
+                 503  no key configured
+
+---
+
+## 15. Download deck — **changed**
+
+    Description: Returns the built `.pptx`.
+    Endpoint:    GET /projects/{project_id}/deck/file
     Input:       none
     Outputs:     200  .pptx
                       application/vnd.openxmlformats-officedocument.presentationml.presentation
-                 404  no such project or deck
-                 502  plan call failed, or the plan could not be grounded
-                 503  no key configured
+                 404  no such project or deck, or it has not been built
+
+---
+
+## 16. List context — **later**
+
+    Description: Lists the resources a project draws on.
+    Endpoint:    GET /projects/{project_id}/context
+    Input:       none
+    Outputs:     200  [Resource {
+                        "id":       str,
+                        "kind":     "codebase" | "document",
+                        "location": str,
+                        "added_at": datetime
+                      }]
+                 404  no such project
+
+---
+
+## 17. Add context — **later**
+
+    Description: Registers one more resource — a repository path, a PDF, a document — and
+                 indexes it.
+    Endpoint:    POST /projects/{project_id}/context
+    Input:            {
+                        "location": str
+                      }
+    Outputs:     202  {"job_id": str}
+                 400  unreadable, unsupported, or already registered
+                 404  no such project
+
+---
+
+## 18. Remove context — **later**
+
+    Description: Unregisters a resource and drops everything derived from it.
+    Endpoint:    DELETE /projects/{project_id}/context/{resource_id}
+    Input:       none
+    Outputs:     204  empty
+                 404  no such project or resource

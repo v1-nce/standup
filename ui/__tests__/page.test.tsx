@@ -1,6 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import Page from "../app/page";
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => Promise.resolve(new Response("[]", { status: 200 }))),
+  );
+});
 
 test("the shell composes a rail toggle, a conversation, a composer and a deck", () => {
   render(<Page />);

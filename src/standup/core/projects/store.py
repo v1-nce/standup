@@ -97,6 +97,15 @@ class ProjectStore:
             raise NotFound(f"No project {project_id}")
         return project
 
+    def rename(self, project_id: str, name: str) -> Project:
+        """The id is the directory and stays put; only the display name moves."""
+        wanted = name.strip()
+        if not wanted:
+            raise InvalidInput("A project needs a name")
+        project = self.get(project_id).model_copy(update={"name": wanted})
+        self._write(self._root / project_id, project)
+        return project
+
     def delete(self, project_id: str) -> None:
         self.get(project_id)
         shutil.rmtree(self._root / project_id)

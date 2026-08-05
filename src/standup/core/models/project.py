@@ -28,6 +28,10 @@ class ProjectCreate(BaseModel):
     location: str
 
 
+class ProjectRename(BaseModel):
+    name: str
+
+
 class ChatAppend(BaseModel):
     role: str
     content: str

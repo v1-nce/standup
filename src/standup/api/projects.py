@@ -4,7 +4,13 @@ from functools import lru_cache
 from fastapi import APIRouter
 
 from standup.config import settings
-from standup.core.models import ChatAppend, ChatMessage, Project, ProjectCreate
+from standup.core.models import (
+    ChatAppend,
+    ChatMessage,
+    Project,
+    ProjectCreate,
+    ProjectRename,
+)
 from standup.core.projects import ChatLog, ProjectStore
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -34,6 +40,11 @@ async def create_project(body: ProjectCreate) -> Project:
 @router.get("/{project_id}")
 def get_project(project_id: str) -> Project:
     return get_store().get(project_id)
+
+
+@router.patch("/{project_id}")
+def rename_project(project_id: str, body: ProjectRename) -> Project:
+    return get_store().rename(project_id, body.name)
 
 
 @router.delete("/{project_id}", status_code=204)

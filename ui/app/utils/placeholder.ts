@@ -5,8 +5,6 @@
 
 import type { Message } from "@/app/components/ChatPanel";
 
-export const PROJECTS = ["standup", "flask", "zod"];
-
 export const SLIDES = ["Auth refactor", "Index rebuild", "Selection weights", "API surface"];
 
 export const MESSAGES: Message[] = [

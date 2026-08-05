@@ -1,10 +1,23 @@
 "use client";
 
+import { useState } from "react";
+import type { Project } from "@/app/api/client";
 import { IconButton, MenuPath } from "@/app/components/IconButton";
-import { PROJECTS } from "@/app/utils/placeholder";
+import { ProjectRow } from "@/app/components/ProjectRow";
+import { useProjects } from "@/app/hooks/useProjects";
 
 /** The project rail. Pushes the layout on desktop, overlays as a drawer below lg. */
 export function Rail({ onToggle, open }: { onToggle: () => void; open: boolean }) {
+  const { error, projects, remove, rename } = useProjects();
+  const [picked, setPicked] = useState<string | null>(null);
+  const selectedId = picked ?? projects[0]?.id ?? null;
+
+  const confirmDelete = (project: Project) => {
+    if (!window.confirm(`Delete ${project.name}? Everything derived from it goes too.`)) return;
+    if (project.id === selectedId) setPicked(null);
+    void remove(project.id);
+  };
+
   return (
     <aside
       className={`fixed z-30 flex h-dvh flex-col overflow-hidden border-r border-rule bg-paper transition-[width] duration-200 ease-out lg:static ${
@@ -25,15 +38,19 @@ export function Rail({ onToggle, open }: { onToggle: () => void; open: boolean }
       </div>
 
       <nav className="scroll-thin flex min-h-0 min-w-60 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3">
-        {PROJECTS.map((project, index) => (
-          <button
-            key={project}
-            className={`truncate rounded-sm px-3 py-2 text-left font-mono text-sm transition-colors hover:bg-ink/5 ${
-              index === 0 ? "text-ink" : "text-muted"
-            }`}
-          >
-            {project}
-          </button>
+        {error && <p className="px-3 py-2 font-mono text-xs text-accent">{error}</p>}
+        {!error && projects.length === 0 && (
+          <p className="px-3 py-2 font-mono text-xs text-muted">No projects yet</p>
+        )}
+        {projects.map((project) => (
+          <ProjectRow
+            key={project.id}
+            onDelete={() => confirmDelete(project)}
+            onRename={(name) => void rename(project.id, name)}
+            onSelect={() => setPicked(project.id)}
+            project={project}
+            selected={project.id === selectedId}
+          />
         ))}
       </nav>
     </aside>

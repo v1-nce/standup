@@ -41,6 +41,25 @@ def test_bad_location_is_400(client, tmp_path):
 def test_unknown_project_is_404(client):
     assert client.get("/projects/does-not-exist").status_code == 404
     assert client.delete("/projects/does-not-exist").status_code == 404
+    assert client.patch("/projects/does-not-exist", json={"name": "Ghost"}).status_code == 404
+
+
+def test_rename_keeps_the_id(client, codebase):
+    project_id = client.post(
+        "/projects", json={"name": "Old", "location": str(codebase)}
+    ).json()["id"]
+
+    renamed = client.patch(f"/projects/{project_id}", json={"name": "  New  "})
+    assert renamed.status_code == 200
+    assert renamed.json() == {**renamed.json(), "id": project_id, "name": "New"}
+    assert client.get(f"/projects/{project_id}").json()["name"] == "New"
+
+
+def test_rename_to_nothing_is_400(client, codebase):
+    project_id = client.post(
+        "/projects", json={"name": "Real", "location": str(codebase)}
+    ).json()["id"]
+    assert client.patch(f"/projects/{project_id}", json={"name": "   "}).status_code == 400
 
 
 def test_delete(client, codebase):
