@@ -28,12 +28,73 @@ answers "all of it". **Present** turns the selection into slides, validated agai
 
 Two model calls per deck in the steady state.
 
-## Status
+## Layout
 
-Backend only, 122 tests passing. Index, gather, select and present run end to end and produce a
-`.pptx`. No frontend, no packaging, no diagrams, no benchmarks yet.
+One installable Python package. The UI is source that compiles into it, not a second service.
 
-Run it: [backend/README.md](backend/README.md).
+```
+pyproject.toml        the package; declares the `standup` command
+src/standup/
+  cli.py              `standup` — serve the GUI and open it
+  config.py           settings; reads ~/.standup/.env before any repo .env
+  errors.py           the one exception hierarchy
+  core/               the analysis library — imports nothing from api/ or the web
+    index/            walk, parse, import graph, git history, doc emphasis
+    gather.py         scope (one model call), then candidates
+    selection/        signals, weights, MMR — no model reaches this decision
+    present/          plan (one model call), validate, build the .pptx
+    llm/              the only path to a model; nothing outside names a provider
+    projects/         projects on disk, chat log
+    models/           the pipeline's typed spine
+    pipeline.py       the four stages, stitched
+  api/                FastAPI over core/, plus a StaticFiles mount over web/
+  web/                built GUI, staged here by `npm run build`. Generated
+ui/                   GUI source — Next.js static export
+tests/                pytest
+benchmarks/           measurement, one concern per target
+```
+
+## Run it
+
+Requires Python 3.12+, Node 22+, and `git`.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1        # macOS/Linux: source .venv/bin/activate
+pip install -e ".[dev]"
+
+cd ui && npm install && npm run build && cd ..
+standup
+```
+
+`standup` serves the API and the GUI from one process and opens your browser.
+`--port` and `--no-browser` are the only flags.
+
+Connect a model by putting one key in `~/.standup/.env` (or the repo's `.env` while developing):
+
+```
+ANTHROPIC_API_KEY=sk-ant-...     # or
+GEMINI_API_KEY=AIza...
+```
+
+Anthropic wins if both are set; `LLM_PROVIDER=gemini` overrides that. Indexing a project needs
+no key — only writing slides does.
+
+## Develop
+
+```powershell
+python -m pytest          # 122 tests
+ruff check src tests
+
+cd ui
+npm run dev               # http://localhost:3000, expects the API on :8000
+npm test
+```
+
+In dev the GUI runs on `:3000` and the API on `:8000`, which is cross-origin — the API allows
+that one origin. A packaged install serves both from one port and never uses it.
+
+API reference: [API.md](API.md).
 
 ## Docs
 
@@ -41,7 +102,6 @@ Run it: [backend/README.md](backend/README.md).
 |---|---|
 | [docs/SPECS.md](docs/SPECS.md) | The product — problem, users, competitors, scope |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The system's shape and the bets behind it |
+| [docs/UIUX.md](docs/UIUX.md) | How someone installs and uses it |
 | [docs/RESEARCH.md](docs/RESEARCH.md) | Prior art the design argues against |
-| [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md) | The standard the architecture answers to |
 | [CLAUDE.md](CLAUDE.md) | Stack, rules, targets, and the canonical open questions |
-| [backend/README.md](backend/README.md) | Install, run, test |

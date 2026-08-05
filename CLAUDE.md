@@ -8,34 +8,49 @@ Two model calls in the steady state — one to read the request, one to plan the
 
 **The user does not know what to present.** They have a rough idea and a deadline, twice a week. That is the whole reason the product exists, and the reason selection cannot be delegated back to them.
 
+## What exists
+
+Verified 2026-08-05. **Backend: 122 tests. Frontend: 7.** Both in CI.
+
+- **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (scope call + candidates), selection (five signals, weights, MMR), present (plan call, groundedness validation, `.pptx`), the project store and chat log, the provider seam over Anthropic and Gemini, and the HTTP API over all of it.
+- **Scaffolding only** — the frontend is one screen that reports model status; the composer is inert.
+- **Not built** — diagrams, SSE, prompt caching, briefs (`Scored.brief` is always `None`), every benchmark, packaging.
+- **Never measured** — every tuning constant. `LAMBDA = 0.7`, the whole `WEIGHTS` table, `MAX_COMMITS`, `MIN_NAME_LENGTH` are guesses standing in until the quality benchmark exists.
+
+**The chat is not wired to the pipeline.** `POST /projects/{id}/chat` appends to a file nothing reads; a deck is created by posting a `request` string to `/decks`. The product says chat is the only way in, so this gap is real and named — not a stylistic difference.
+
 ## Stack
 
-Chosen 2026-08-02, grounded in [docs/RESEARCH.md](docs/RESEARCH.md). Two services.
+Chosen 2026-08-02, grounded in [docs/RESEARCH.md](docs/RESEARCH.md). Two services. Rows marked
+**Not built** are decisions on record, not claims about the code.
 
-**Frontend — [frontend/](frontend/)**
+**GUI source — [ui/](ui/)**, which `npm run build` stages into `src/standup/web/`
 
 | | |
 |---|---|
 | Next.js (App Router), React, TypeScript | The GUI users work in |
-| Tailwind CSS, shadcn/ui (Radix UI) | Components; shadcn is copy-in, not a runtime dependency |
-| `EventSource` (browser built-in) | Progress streaming over SSE. No WebSocket — progress is one-directional |
+| **`output: "export"`** | Static export. The shipped product is one process and that process is Python, so it serves plain files — no SSR, no server components, no route handlers. Settled by the UX in [docs/UIUX.md](docs/UIUX.md); the packaging half of question 1 is still open |
+| Tailwind CSS | Styling. shadcn/ui when a component earns it — copy-in, not a runtime dependency. **Not yet used** |
+| Vitest + Testing Library | Unit tests. Not Jest — Vitest reuses the Vite pipeline already present |
 | `openapi-typescript` | API types **generated** from the backend's OpenAPI schema. Never hand-written |
+| `EventSource` (browser built-in) | Progress streaming over SSE. No WebSocket — progress is one-directional. **Not built**, and neither is the backend half |
 
-**Backend — [backend/](backend/)**
+**The package — [src/standup/](src/standup/)**, installable, and the only thing that ships
 
 | | |
 |---|---|
 | Python 3.12+, FastAPI, uvicorn | Long-lived service. The pipeline runs for minutes; it cannot live in a route handler |
 | Pydantic | Validates LLM output *and* auto-generates the OpenAPI schema the frontend types come from — one definition, both jobs |
 | asyncio + semaphore | Bounded fan-out across modules |
-| SSE | Job progress to the frontend |
+| CORS, `localhost:3000` only | `next dev` is cross-origin. The shipped app is same-origin and never uses it |
+| SSE | Job progress to the frontend. **Not built** — trigger is the first request that outlives a browser timeout |
 
 **Analysis core** — a library with a thin CLI, wrapped by FastAPI. The benchmark calls the library directly, never over HTTP.
 
 | | |
 |---|---|
 | `tree-sitter` + `tree-sitter-language-pack` | 100+ grammars, pre-built wheels, no build step, permissive licences only. Error-tolerant — parses broken code |
-| NetworkX | PageRank over the symbol graph. Swap to `rustworkx` only if a benchmark demands it |
+| PageRank (hand-written, ~25 lines) | Over the import graph. **NetworkX was dropped**: it pulls numpy and scipy (~100MB) to run power iteration we can write in a page, and memory is a hard target. Revisit only if a benchmark measures it slow |
 | MMR (hand-written, ~15 lines) | Diversity. Relevance alone yields eight slides on one subsystem |
 | `git` via subprocess | **The record of what actually happened.** Commit history, diffs, authorship, branch and merge state, commit messages, and the tree. Churn is one signal it yields, not the reason it is there |
 
@@ -44,8 +59,9 @@ Chosen 2026-08-02, grounded in [docs/RESEARCH.md](docs/RESEARCH.md). Two service
 | | |
 |---|---|
 | Anthropic SDK, `claude-opus-5` | `messages.parse()` + Pydantic gives schema-bound output with SDK-level retry |
-| Prompt caching | Stable repo prefix first, volatile content last (512-token minimum on Opus 5) |
-| Batch API | **Benchmarks only.** 50% cheaper, hour-scale latency — fatal for interactive use |
+| Gemini via AI Studio REST | A **free stand-in for development**, behind the same interface. `gemini-flash-lite-latest` — the thinking models spend their whole budget before answering. Weaker at following the scope prompt than Opus; don't tune anything against it |
+| Prompt caching | Stable repo prefix first, volatile content last (512-token minimum on Opus 5). **Not built** |
+| Batch API | **Benchmarks only.** 50% cheaper, hour-scale latency — fatal for interactive use. **Not built** |
 
 **Model access — two paths, both first-class from day one**
 
@@ -66,13 +82,13 @@ Subscription is the frictionless default and the revenue; BYOK is not a grudging
 
 | | |
 |---|---|
-| D2 → SVG | Single Go binary, no browser. **Not Mermaid** — `mermaid-cli` needs Chromium (~300–400MB), which breaks the memory target. D2's PNG path also spawns Playwright, so stop at SVG |
-| cairosvg | SVG → PNG in-process |
-| python-pptx + a template `.pptx` | Native, editable downstream. python-pptx cannot create slide masters, so all layouts live in the template — which is also the content/layout decoupling that makes Gamma's output reliable |
+| D2 → SVG | Single Go binary, no browser. **Not Mermaid** — `mermaid-cli` needs Chromium (~300–400MB), which breaks the memory target. D2's PNG path also spawns Playwright, so stop at SVG. **Not built** — blocked on question 1, since a Go binary is exactly what "one command" has to swallow |
+| cairosvg | SVG → PNG in-process. **Not built** |
+| python-pptx + a template `.pptx` | Native, editable downstream. python-pptx cannot create slide masters, so all layouts live in the template — which is also the content/layout decoupling that makes Gamma's output reliable. **The template does not exist yet**; `present/deck.py` uses python-pptx's default and takes whatever layouts come with it |
 
 **Storage** — content-hash keyed files; JSON for the editable selection artifact. A project's index persists between decks: indexing is amortised across months of use, not repeated per deck. No database until one is needed.
 
-**Tooling** — uv, pnpm, ruff, pytest. Docker Compose is a **development** convenience only; users must never need Docker to run Standup. Shipping is a separate problem and is unsolved — see open question 1.
+**Tooling** — ruff and pytest on the backend, Vitest on the frontend, both wired into CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)). uv and pnpm are the intent and neither is in use: the backend runs on `venv` + `pip -r requirements.txt`, the frontend on npm, because `corepack enable` needs administrator rights on the development machine. No Docker anywhere — users must never need it, and nothing here does. Shipping is a separate problem and is unsolved — see open question 1.
 
 ### Deliberately excluded
 
@@ -157,9 +173,9 @@ Break these and it's a different product.
 
 ## Benchmarks
 
-[benchmarks/](benchmarks/) is the home for measurement — one concern per target.
+[benchmarks/](benchmarks/) is the home for measurement — one concern per target. **Nothing in it is built**, deliberately: the call was to get the backend working first and measure once it is.
 
-**Build the quality benchmark before refining anything.** Tuning without it is guessing.
+**Build the quality benchmark before refining anything.** Tuning without it is guessing, and every constant in `selection/` is currently a guess.
 
 The design on hand: codebases with an existing human-made architecture talk; compare what Standup chose against what the presenter actually covered. Initial target: 60% overlap, below which the selection logic is wrong and polish is irrelevant.
 
@@ -179,7 +195,7 @@ Budgets for cost, latency, and memory get set from real measurement, not estimat
 
 | # | Question | What it changes |
 |---|---|---|
-| 1 | **How does this ship as one command?** | Directly contradicts the current stack. Two services, a Python runtime, a Node build and a `d2` binary do not install with one command today. If the Python process serves the frontend, Next.js must be a **static export** — no SSR, no server components, no route handlers. That is a frontend architecture constraint, not a packaging detail. |
+| 1 | **How does this ship as one command?** | Two services, a Python runtime, a Node build and a `d2` binary do not install with one command today. **The frontend half is settled**: [docs/UIUX.md](docs/UIUX.md) says `standup` opens a browser from one process, so Next.js is a static export and always will be. The packaging half is untouched — how the Python runtime, the built assets and `d2` arrive on a stranger's machine from one line. |
 | 2 | **How long until a new user's first deck?** | Every deck after the first is cheap because the project is indexed. The first is not, and it lands exactly where someone decides whether to keep the tool — Gamma manages nothing-to-deck in under a minute. Indexing the recent window before the full history would help; nothing is measured. |
 | 3 | Is BYOK single-provider or multi-provider? | Whether `src/llm/` normalises across wire formats or only ever speaks Anthropic. Presenton supports four; supporting one is far cheaper and may be enough. |
 | 4 | What does the gateway retain, and what do we tell users? | The subscription path routes their code through us. The answer is a product promise before it is a schema. |

@@ -19,6 +19,9 @@ node_modules/
 .next/
 out/
 
+# Build output: `npm run build` in ui/ stages the GUI into the package it ships from
+src/standup/web/
+
 # Local project index, artifacts and decks
 .standup/
 
@@ -31,6 +34,7 @@ out/
 .claude/settings.local.json
 
 docs/
+CLAUDE.md
 
 .DS_Store
 Thumbs.db
