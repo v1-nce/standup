@@ -6,14 +6,18 @@ import { Composer } from "@/app/components/Composer";
 import { IconButton, MenuPath } from "@/app/components/IconButton";
 import { Rail } from "@/app/components/Rail";
 import { Slides } from "@/app/components/Slides";
-import { MESSAGES, SLIDES } from "@/app/utils/placeholder";
+import { useConversation } from "@/app/hooks/useConversation";
+import { useProjects } from "@/app/hooks/useProjects";
 
 export default function Home() {
   const [railOpen, setRailOpen] = useState(false);
-  const [messages, setMessages] = useState(MESSAGES);
+  const [picked, setPicked] = useState<string | null>(null);
+
+  const projects = useProjects();
+  const selectedId = picked ?? projects.projects[0]?.id ?? null;
+  const { deck, error, messages, pending, send } = useConversation(selectedId);
+
   const toggleRail = () => setRailOpen((open) => !open);
-  const send = (request: string) =>
-    setMessages((sent) => [...sent, { from: "you", text: request }]);
 
   return (
     <div className="flex h-dvh overflow-hidden">
@@ -25,7 +29,13 @@ export default function Home() {
         onClick={() => setRailOpen(false)}
       />
 
-      <Rail onToggle={toggleRail} open={railOpen} />
+      <Rail
+        onSelect={setPicked}
+        onToggle={toggleRail}
+        open={railOpen}
+        projects={projects}
+        selectedId={selectedId}
+      />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-1 border-b border-rule px-2">
@@ -39,11 +49,12 @@ export default function Home() {
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
           <section className="flex min-h-0 flex-col gap-3 lg:w-96 lg:shrink-0">
-            <ChatPanel messages={messages} />
-            <Composer onSend={send} />
+            <ChatPanel messages={messages} pending={pending} />
+            {error && <p className="shrink-0 font-mono text-xs text-accent">{error}</p>}
+            <Composer disabled={!selectedId || pending} onSend={send} />
           </section>
 
-          <Slides slides={SLIDES} />
+          <Slides deck={deck} />
         </div>
       </div>
     </div>

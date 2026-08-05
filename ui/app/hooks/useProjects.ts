@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { api, type Project } from "@/app/api/client";
+import { api, reason, type Project } from "@/app/api/client";
 
-/** The project list. */
 export function useProjects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
-  
+
   const after = useCallback(
     (action: Promise<unknown> = Promise.resolve()) =>
       action
@@ -16,7 +15,7 @@ export function useProjects() {
           setProjects(found);
           setError(null);
         })
-        .catch((failure: Error) => setError(failure.message)),
+        .catch((failure) => setError(reason(failure))),
     [],
   );
 
@@ -29,3 +28,5 @@ export function useProjects() {
     remove: (id: string) => after(api.deleteProject(id)),
   };
 }
+
+export type Projects = ReturnType<typeof useProjects>;

@@ -1,12 +1,14 @@
 export function IconButton({
   children,
   className = "h-11 w-11 text-ink hover:bg-ink/5",
+  disabled = false,
   label,
   onClick,
   type = "button",
 }: {
   children: React.ReactNode;
   className?: string;
+  disabled?: boolean;
   label: string;
   onClick?: () => void;
   type?: "button" | "submit";
@@ -14,7 +16,8 @@ export function IconButton({
   return (
     <button
       aria-label={label}
-      className={`grid shrink-0 place-items-center rounded-sm transition-colors ${className}`}
+      className={`grid shrink-0 place-items-center rounded-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      disabled={disabled}
       onClick={onClick}
       type={type}
     >

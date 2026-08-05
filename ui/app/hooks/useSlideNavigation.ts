@@ -6,9 +6,11 @@ const GESTURE_MS = 250;
 const MIN_DELTA = 8;
 
 export function useSlideNavigation(count: number) {
-  const [active, setActive] = useState(0);
+  const [picked, setActive] = useState(0);
   const lastStep = useRef(0);
   const strip = useRef<HTMLDivElement>(null);
+
+  const active = Math.min(picked, Math.max(0, count - 1));
 
   const step = useCallback(
     (delta: number) => setActive((index) => Math.min(count - 1, Math.max(0, index + delta))),

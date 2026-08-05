@@ -1,20 +1,26 @@
 "use client";
 
-import { useState } from "react";
 import type { Project } from "@/app/api/client";
 import { IconButton, MenuPath } from "@/app/components/IconButton";
 import { ProjectRow } from "@/app/components/ProjectRow";
-import { useProjects } from "@/app/hooks/useProjects";
+import type { Projects } from "@/app/hooks/useProjects";
 
 /** The project rail. Pushes the layout on desktop, overlays as a drawer below lg. */
-export function Rail({ onToggle, open }: { onToggle: () => void; open: boolean }) {
-  const { error, projects, remove, rename } = useProjects();
-  const [picked, setPicked] = useState<string | null>(null);
-  const selectedId = picked ?? projects[0]?.id ?? null;
-
+export function Rail({
+  onSelect,
+  onToggle,
+  open,
+  projects: { error, projects, remove, rename },
+  selectedId,
+}: {
+  onSelect: (id: string) => void;
+  onToggle: () => void;
+  open: boolean;
+  projects: Projects;
+  selectedId: string | null;
+}) {
   const confirmDelete = (project: Project) => {
     if (!window.confirm(`Delete ${project.name}? Everything derived from it goes too.`)) return;
-    if (project.id === selectedId) setPicked(null);
     void remove(project.id);
   };
 
@@ -47,7 +53,7 @@ export function Rail({ onToggle, open }: { onToggle: () => void; open: boolean }
             key={project.id}
             onDelete={() => confirmDelete(project)}
             onRename={(name) => void rename(project.id, name)}
-            onSelect={() => setPicked(project.id)}
+            onSelect={() => onSelect(project.id)}
             project={project}
             selected={project.id === selectedId}
           />

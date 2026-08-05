@@ -102,40 +102,23 @@ export interface paths {
         /** Read Chat */
         get: operations["read_chat_projects__project_id__chat_get"];
         put?: never;
-        /** Append Chat */
-        post: operations["append_chat_projects__project_id__chat_post"];
+        /** Send Message */
+        post: operations["send_message_projects__project_id__chat_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/decks": {
+    "/projects/{project_id}/deck": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        /** Propose Deck */
-        post: operations["propose_deck_projects__project_id__decks_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects/{project_id}/decks/{deck_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Read Selection */
-        get: operations["read_selection_projects__project_id__decks__deck_id__get"];
+        /** Read Deck */
+        get: operations["read_deck_projects__project_id__deck_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -144,7 +127,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/decks/{deck_id}/selection": {
+    "/projects/{project_id}/deck/selection": {
         parameters: {
             query?: never;
             header?: never;
@@ -153,7 +136,7 @@ export interface paths {
         };
         get?: never;
         /** Edit Selection */
-        put: operations["edit_selection_projects__project_id__decks__deck_id__selection_put"];
+        put: operations["edit_selection_projects__project_id__deck_selection_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -161,17 +144,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_id}/decks/{deck_id}/build": {
+    "/projects/{project_id}/deck/file": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Download Deck */
+        get: operations["download_deck_projects__project_id__deck_file_get"];
         put?: never;
-        /** Build Deck */
-        post: operations["build_deck_projects__project_id__decks__deck_id__build_post"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Job */
+        get: operations["read_job_jobs__job_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -182,23 +182,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /**
-         * Brief
-         * @description One candidate examined blind to the others. `evidence` is what validation checks.
-         */
-        Brief: {
-            /** Candidate Id */
-            candidate_id: string;
-            /** What Changed */
-            what_changed: string;
-            /** Why It Matters */
-            why_it_matters: string;
-            /**
-             * Evidence
-             * @default []
-             */
-            evidence: string[];
-        };
         /** Candidate */
         Candidate: {
             /** Id */
@@ -216,17 +199,13 @@ export interface components {
              */
             commits: string[];
         };
-        /** ChatAppend */
-        ChatAppend: {
-            /** Role */
-            role: string;
-            /** Content */
-            content: string;
-        };
         /** ChatMessage */
         ChatMessage: {
-            /** Role */
-            role: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
             /** Content */
             content: string;
             /**
@@ -235,21 +214,22 @@ export interface components {
              */
             at: string;
         };
-        /** DeckProposal */
-        DeckProposal: {
-            /** Deck Id */
-            deck_id: string;
-            selection: components["schemas"]["Selection"];
+        /**
+         * ChatSend
+         * @description What a client may put in the log. Only the person's own words — never a reply.
+         */
+        ChatSend: {
+            /** Content */
+            content: string;
         };
-        /** DeckRequest */
-        DeckRequest: {
-            /** Request */
-            request: string;
-            /**
-             * Slide Budget
-             * @default 5
-             */
-            slide_budget: number;
+        /**
+         * Deck
+         * @description A project's one deck: what it will say, and the slides once they are written.
+         */
+        Deck: {
+            selection: components["schemas"]["Selection"];
+            /** Slides */
+            slides?: components["schemas"]["Slide"][] | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -260,6 +240,20 @@ export interface components {
         Health: {
             /** Status */
             status: string;
+        };
+        /** Job */
+        Job: {
+            /** Id */
+            id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "running" | "done" | "failed";
+            /** Step */
+            step: string;
+            /** Detail */
+            detail?: string | null;
         };
         /** ModelCheck */
         ModelCheck: {
@@ -331,7 +325,6 @@ export interface components {
         /** Scored */
         Scored: {
             candidate: components["schemas"]["Candidate"];
-            brief?: components["schemas"]["Brief"] | null;
             /**
              * Signals
              * @default {}
@@ -368,6 +361,18 @@ export interface components {
         SelectionEdit: {
             /** Keep */
             keep: string[];
+        };
+        /** Slide */
+        Slide: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Title */
+            title: string;
+            /**
+             * Bullets
+             * @default []
+             */
+            bullets: string[];
         };
         /** Source */
         Source: {
@@ -643,7 +648,7 @@ export interface operations {
             };
         };
     };
-    append_chat_projects__project_id__chat_post: {
+    send_message_projects__project_id__chat_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -654,17 +659,17 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ChatAppend"];
+                "application/json": components["schemas"]["ChatSend"];
             };
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChatMessage"];
+                    "application/json": components["schemas"]["Job"];
                 };
             };
             /** @description Validation Error */
@@ -678,48 +683,12 @@ export interface operations {
             };
         };
     };
-    propose_deck_projects__project_id__decks_post: {
+    read_deck_projects__project_id__deck_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeckRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DeckProposal"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    read_selection_projects__project_id__decks__deck_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                project_id: string;
-                deck_id: string;
             };
             cookie?: never;
         };
@@ -731,7 +700,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Selection"];
+                    "application/json": components["schemas"]["Deck"];
                 };
             };
             /** @description Validation Error */
@@ -745,13 +714,12 @@ export interface operations {
             };
         };
     };
-    edit_selection_projects__project_id__decks__deck_id__selection_put: {
+    edit_selection_projects__project_id__deck_selection_put: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project_id: string;
-                deck_id: string;
             };
             cookie?: never;
         };
@@ -767,7 +735,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Selection"];
+                    "application/json": components["schemas"]["Deck"];
                 };
             };
             /** @description Validation Error */
@@ -781,13 +749,12 @@ export interface operations {
             };
         };
     };
-    build_deck_projects__project_id__decks__deck_id__build_post: {
+    download_deck_projects__project_id__deck_file_get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 project_id: string;
-                deck_id: string;
             };
             cookie?: never;
         };
@@ -800,6 +767,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_job_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
                 };
             };
             /** @description Validation Error */
