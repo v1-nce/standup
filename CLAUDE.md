@@ -4,20 +4,20 @@ Whatever you need to present → slide deck. Full framing in [docs/SPECS.md](doc
 
 The user registers resources once — a codebase **and its git history**, documents, past decks — then chats to ask for a deck. Four steps: **index** the registered resources → **gather** what the request puts in play → **select** what belongs → **present** it as slides. Selection is the product.
 
-Two model calls in the steady state — one to read the request, one to plan the slides. Everything between them is deterministic. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6 for the call budget; it is the number that decides whether this is usable twice a week.
+**One project, one deck.** A project holds one deck, one conversation, and the resources it was given.
+
+**The agent is the only thing that calls the model.** It reads the conversation, issues commands against the deck, and answers — the way Claude Code edits a file. Its three commands (`select`, `keep`, `write`) are all deterministic once chosen, so the loop's own rounds are the entire model spend: one call for conversation, two for an edit, three for a new deck. There is no command for the `.pptx` — slides are the deck, and the file is rendered when it is downloaded. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6 for the budget; it is the number that decides whether this is usable twice a week.
 
 **The user does not know what to present.** They have a rough idea and a deadline, twice a week. That is the whole reason the product exists, and the reason selection cannot be delegated back to them.
 
 ## What exists
 
-Verified 2026-08-05. **Backend: 122 tests. Frontend: 7.** Both in CI.
+Verified 2026-08-05. **Backend: 140 tests. Frontend: 15.** Both in CI.
 
-- **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (scope call + candidates), selection (five signals, weights, MMR), present (plan call, groundedness validation, `.pptx`), the project store and chat log, the provider seam over Anthropic and Gemini, and the HTTP API over all of it.
-- **Shell only** — the GUI has its rail, conversation, composer and slide stage with keyboard and wheel navigation, and reaches no backend. The composer echoes locally; `PROJECTS`, `SLIDES` and `MESSAGES` are placeholder data in one file, to be deleted when the API lands.
-- **Not built** — diagrams, SSE, prompt caching, briefs (`Scored.brief` is always `None`), every benchmark, packaging.
-- **Never measured** — every tuning constant. `LAMBDA = 0.7`, the whole `WEIGHTS` table, `MAX_COMMITS`, `MIN_NAME_LENGTH` are guesses standing in until the quality benchmark exists.
-
-**The chat is not wired to the pipeline.** `POST /projects/{id}/chat` appends to a file nothing reads; a deck is created by posting a `request` string to `/decks`. The product says chat is the only way in, so this gap is real and named — not a stylistic difference.
+- **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (deterministic scope validation + candidates), selection (five signals, weights, MMR), present (groundedness validation, `.pptx`), the agent loop and its three commands, the job runner, the project store and chat log, the provider seam over Anthropic and Gemini, and the HTTP API over all of it.
+- **Wired end to end** — the GUI reads and writes real projects, sends a message, polls the job, and renders the deck the agent wrote. Types are generated from the backend's OpenAPI schema.
+- **Not built** — diagrams, SSE, prompt caching, a project's context database (the `+` is disabled), every benchmark, packaging. Briefs were a designed stage and the empty seam holding their place is now **deleted**; they return only if the quality benchmark earns them — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6.
+- **Never measured** — every tuning constant. `LAMBDA = 0.7`, the whole `WEIGHTS` table, `MAX_COMMITS`, `MIN_NAME_LENGTH`, and now `MAX_ROUNDS = 5` are guesses standing in until the quality benchmark exists.
 
 ## Stack
 
@@ -97,7 +97,7 @@ Vector DB, embeddings, chunking, RAG — Standup does one structured extraction 
 
 **This exclusion is under pressure and has not been re-decided.** The justification above assumed a fixed job against known input. A chat interface issuing arbitrary requests over arbitrary registered resources is closer to open-ended Q&A than that sentence allows. The exclusion may well still hold — narrowing by structure, time and dependency is not semantic search — but the original reason no longer covers the product. Open question 1.
 
-Also out: LangGraph/LangChain (no agent loop — parallel one-shot calls), Kubernetes, Postgres, Redis, Celery, Mermaid, Puppeteer/Playwright.
+Also out: LangGraph/LangChain, Kubernetes, Postgres, Redis, Celery, Mermaid, Puppeteer/Playwright. **The agent loop ships, the framework does not** — it is ~40 lines over `structured()`, and per [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md) §0 you own the loop when its reliability and cost *are* the product. A framework here would hide the one number that matters.
 
 **Auth is in, multi-tenancy is out.** These were previously excluded together, and they are not the same thing. Signing in to the subscription needs accounts, tokens and refresh — that is real auth and it ships. Nothing else does: no per-user isolation, no roles, no sharing, no tenancy. Standup runs as one person on one machine, and the account exists to authorise a gateway, not to partition a server.
 
@@ -172,7 +172,8 @@ Break these and it's a different product.
 - **Git is the record; the prompt is the memory.** The user says what they *think* they did after two blurred days. Git says what they *actually* did, with timestamps, authorship and completion state. Where the two disagree, git wins and the prompt is treated as a search hint. Reconciling the two is the job.
 - **Judgment ranks and cuts; language comes after.** Narrative and phrasing are applied to decisions already made, never the other way round.
 - **Selection is visible and editable.** The user sees what was chosen and why, and can change it before the deck is built.
-- **Correcting a choice is cheap, and the correction is obeyed.** A wrong selection costs a small edit, not a full regeneration — and that edit is applied literally. No model re-interprets it, nothing gets quietly "improved" back. Remove an item and it's gone; reorder and that order holds; only the affected slides re-render. A correction you have to argue with is not cheap.
+- **Correcting a choice is cheap, and the correction is obeyed.** A wrong selection costs a small edit, not a full regeneration. Remove an item and it's gone; reorder and that order holds; only the affected slides re-render. A correction you have to argue with is not cheap.
+- **The agent chooses the command; the command runs literally.** Saying "drop the weights one" is a correction, not a suggestion, because the model's only power is to *name* an operation — `keep` reorders exactly as told, `write` touches only the slides it names, and everything the agent writes is checked against the index before it is kept. The model never re-ranks: scores and signals are withheld from its prompt, so ranking stays where it is derived. This is what lets chat be the editing surface without the edit becoming a negotiation.
 - **The user's resources stay on the user's machine.** Registering a codebase points at a path; it does not upload it. Indexing, artifacts, decks and history are all local. The only thing that ever leaves is the content of a bounded model call, and the user chose where that goes when they picked a path. Anything that quietly widens what leaves is a breach of the product, not an optimisation.
 
 ## Benchmarks

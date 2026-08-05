@@ -1,18 +1,18 @@
 # API
 
-18 endpoints — 15 now, 3 later. Base URL `http://127.0.0.1:8000`. Every error body is
+17 endpoints — 14 built, 3 later. Base URL `http://127.0.0.1:8000`. Every error body is
 `{"detail": str}`; a malformed request body is `422`.
 
-A project holds one deck, one conversation, and the resources it was given. A deck is created
-only by sending a message.
+A project holds one deck, one conversation, and the resources it was given. **The only thing that
+calls the model is sending a message**, and it is the only way a deck is created or changed.
+Reading, editing and rendering a deck are deterministic.
 
-Anything that calls the model runs in the background: the request returns `202 {"job_id"}`, the
-client polls `GET /jobs/{job_id}` until the state leaves `running`, then re-reads whatever the
-job touched. Only failures that can be seen before the work starts — no project, no key — come
-back on the original request; everything else surfaces as a failed job.
+Sending a message returns `202` with a `Job`; the client polls `GET /jobs/{job_id}` until the
+state leaves `running`, then re-reads the chat and the deck. Only failures visible before the
+work starts — no project, no key, already busy — come back on the original request; everything
+else surfaces as a failed job.
 
-Endpoints marked **new**, **changed** or **later** are proposed and do not exist in the code yet;
-the rest ship today.
+Endpoints marked **later** are reserved and not built.
 
 ---
 
@@ -93,7 +93,7 @@ the rest ship today.
 
 ---
 
-## 7. Rename project — **new**
+## 7. Rename project
 
     Description: Changes a project's display name, leaving its id and everything derived from
                  it untouched.
@@ -131,27 +131,27 @@ the rest ship today.
 
 ---
 
-## 10. Send a message — **changed**
+## 10. Send a message
 
-    Description: Appends the message and starts answering it, rebuilding the project's deck if
-                 the message asked for one.
+    Description: Appends the message and starts the agent turn that answers it and changes the
+                 deck.
     Endpoint:    POST /projects/{project_id}/chat
     Input:            {
                         "content": str
                       }
-    Outputs:     202  {"job_id": str}
+    Outputs:     202  Job
                  404  no such project
                  409  this project is already working
                  503  no key configured
 
 ---
 
-## 11. Job status — **new**
+## 11. Job status
 
     Description: Reports how a background job is going, and why it failed if it did.
     Endpoint:    GET /jobs/{job_id}
     Input:       none
-    Outputs:     200  {
+    Outputs:     200  Job {
                         "id":      str,
                         "state":   "running" | "done" | "failed",
                         "step":    str,
@@ -161,7 +161,7 @@ the rest ship today.
 
 ---
 
-## 12. Read deck — **changed**
+## 12. Read deck
 
     Description: Reads the project's deck: what was chosen, what was cut, and the slides once
                  it is built.
@@ -199,7 +199,6 @@ the rest ship today.
                           "paths":   [str],
                           "commits": [str]
                         },
-                        "brief": null,
                         "signals": {
                           "churn":      float,
                           "recency":    float,
@@ -213,10 +212,10 @@ the rest ship today.
 
 ---
 
-## 13. Edit selection — **changed**
+## 13. Edit selection
 
-    Description: Replaces the selection with the given ids in the given order, applied
-                 literally and without a model call.
+    Description: Replaces the selection with the given ids in the given order, applied literally
+                 and without a model call; written slides follow it where they already exist.
     Endpoint:    PUT /projects/{project_id}/deck/selection
     Input:            {
                         "keep": [str]
@@ -226,31 +225,19 @@ the rest ship today.
 
 ---
 
-## 14. Build deck — **changed**
+## 14. Download deck
 
-    Description: Starts writing the slides and the `.pptx`, using one model call unless the
-                 edit only dropped or reordered.
-    Endpoint:    POST /projects/{project_id}/deck/build
-    Input:       none
-    Outputs:     202  {"job_id": str}
-                 404  no such project, or no deck yet
-                 409  this project is already working
-                 503  no key configured
-
----
-
-## 15. Download deck — **changed**
-
-    Description: Returns the built `.pptx`.
+    Description: Renders the written slides to `.pptx` and returns it. No model call.
     Endpoint:    GET /projects/{project_id}/deck/file
     Input:       none
     Outputs:     200  .pptx
                       application/vnd.openxmlformats-officedocument.presentationml.presentation
-                 404  no such project or deck, or it has not been built
+                 400  no slides have been written yet
+                 404  no such project, or no deck yet
 
 ---
 
-## 16. List context — **later**
+## 15. List context — **later**
 
     Description: Lists the resources a project draws on.
     Endpoint:    GET /projects/{project_id}/context
@@ -265,7 +252,7 @@ the rest ship today.
 
 ---
 
-## 17. Add context — **later**
+## 16. Add context — **later**
 
     Description: Registers one more resource — a repository path, a PDF, a document — and
                  indexes it.
@@ -273,13 +260,13 @@ the rest ship today.
     Input:            {
                         "location": str
                       }
-    Outputs:     202  {"job_id": str}
+    Outputs:     202  Job
                  400  unreadable, unsupported, or already registered
                  404  no such project
 
 ---
 
-## 18. Remove context — **later**
+## 17. Remove context — **later**
 
     Description: Unregisters a resource and drops everything derived from it.
     Endpoint:    DELETE /projects/{project_id}/context/{resource_id}

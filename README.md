@@ -24,27 +24,31 @@ INDEX   →   GATHER   →   SELECT   →   PRESENT
 | Step | What it does | Model? |
 |---|---|---|
 | **Index** | Parses your resources into facts: symbols, dependency graph, git history, what your own docs emphasise. Content-keyed, so unchanged sources cost nothing and it runs once per project, not per deck. | No — offline and free |
-| **Gather** | Turns your sentence into a time window, a filter and a slide budget, then applies it to the index. | One call |
+| **Gather** | Turns your sentence into a time window, a filter and a slide budget, then applies it to the index. | No — the agent already read your sentence |
 | **Select** | Ranks and cuts. Five signals, weighted, plus MMR so you don't get three slides on one file. | No — plain code |
-| **Present** | Writes the slide text, checks every claim against the index, builds the `.pptx`. | One call |
+| **Present** | Writes the slide text, checks every claim against the index, builds the `.pptx`. | No — the agent writes it |
 
-**Two model calls per deck.** Everything between them is deterministic.
+**An agent runs the four steps by talking to you** — the way Claude Code edits a file. It names an
+operation, the operation runs in code, it sees what happened, then it answers. Nothing else calls
+a model, so the whole bill is the conversation: **one call to chat, two to change a deck, three to
+build one.**
 
 Three things make it different from asking a chatbot:
 
 - **The model is never asked what's important.** Ask a model "which of these 40 things matter?"
-  and it says "all of them" — that's the flat-output failure. It never sees the candidate list,
-  the scores, or the cut. Your request steers *where to look*; code decides *what's good*.
-- **The judgment is yours to edit.** You see what was chosen and why *before* the deck exists.
-  Remove an item and it's gone; reorder and that order holds. Your edit is applied literally —
-  nothing re-interprets it, and a drop-or-reorder rebuild costs no model call at all.
+  and it says "all of them" — that's the flat-output failure. It never sees the scores or the
+  signals. Your request steers *where to look*; code decides *what's good*.
+- **The judgment is yours to edit, by saying so.** You see what was chosen and why *before* the
+  deck exists. "Drop the second one." "Reword slide three." Your correction is turned into one
+  exact operation and then obeyed — slides you didn't mention keep their wording byte for byte,
+  and a drop-or-reorder costs no model call at all.
 - **Nothing leaves your machine.** Registering a codebase points at a *path*; it does not upload
   it. Indexing, artifacts, decks and history are all local files. The only thing that ever
   leaves is the content of a bounded model call, to a provider you chose.
 
-**Status.** The four steps work end to end and produce a real `.pptx` — 122 tests. The GUI is a
-scaffold: it builds and is served, but the screens aren't written yet, so today you drive
-Standup through its HTTP API. Diagrams, packaging and benchmarks are not built.
+**Status.** Chat, deck and GUI work end to end and produce a real `.pptx` — 140 backend tests, 15
+in the GUI. Adding context beyond the codebase (the `+` button), diagrams, packaging and
+benchmarks are not built.
 
 ## 3. Folder Structure
 
@@ -61,24 +65,26 @@ standup/
 │   ├── errors.py               the one exception hierarchy
 │   │
 │   ├── core/                   the analysis library — knows nothing about the web
+│   │   ├── agent/              the turn: the loop, and the three commands it may name
 │   │   ├── index/              code.py · graph.py · history.py · docs.py
-│   │   ├── gather.py           scope (one model call), then candidates
+│   │   ├── gather.py           scope validation, then candidates. Deterministic
 │   │   ├── selection/          signals.py · score.py · diversity.py
-│   │   ├── present/            plan.py · validate.py · deck.py
+│   │   ├── present/            evidence.py · validate.py · deck.py
 │   │   ├── llm/                the only path to a model; Anthropic + Gemini behind one interface
 │   │   ├── projects/           projects on disk, chat log
 │   │   ├── models/             artifacts.py — the pipeline's typed spine
-│   │   └── pipeline.py         the four steps, stitched
+│   │   └── pipeline.py         the deck on disk; every function deterministic
 │   │
 │   ├── api/                    FastAPI over core/, plus a static mount over web/
 │   └── web/                    the built GUI, staged here by `npm run build`. GENERATED
 │
 ├── ui/                         GUI SOURCE — Next.js, static export
+│   ├── app/api/                fetch client + schema.d.ts, GENERATED from the backend
 │   ├── app/                    the screens you edit
 │   ├── __tests__/              vitest
 │   └── out/                    Next's export, copied into web/. GENERATED
 │
-├── tests/                      pytest — 122 tests
+├── tests/                      pytest — 140 tests
 ├── benchmarks/                 measurement, one concern per target. Not built
 └── docs/                       SPECS · ARCHITECTURE · RESEARCH · UIUX
 ```
@@ -129,50 +135,33 @@ for the commands below.
 
 ### 5. Make a deck
 
-The GUI is still a scaffold, so for now you talk to Standup over HTTP. On Windows type
-`curl.exe`, **not** `curl` — plain `curl` is a different PowerShell command and will not work.
-On macOS/Linux drop the `.exe` and the `\` escapes.
+Everything happens in the browser window that just opened.
 
-**Register your project.** Point it at any folder with a git repo in it. Copy the `id` it prints.
+**Register your project.** Click *+ Register a project* in the left rail and point it at any
+folder with a git repo in it. Rename or delete it there later.
 
-```powershell
-curl.exe -X POST 127.0.0.1:8000/projects -H "Content-Type: application/json" -d '{\"name\":\"My App\",\"location\":\"C:/Users/you/Dev/myapp\"}'
-```
+**Ask for a deck.** Type what you need in the chat, in plain English — *"standup tomorrow, three
+slides on what changed this week"*. The first request also indexes the repo, so give it a few
+seconds; later ones are fast.
 
-**Ask for a deck.** Say what you need in plain English. The first request also indexes the
-repo, so give it a few seconds; later ones are fast.
+Standup replies with what it chose and why, and the slides appear on the right.
 
-```powershell
-curl.exe -X POST 127.0.0.1:8000/projects/PROJECT_ID/decks -H "Content-Type: application/json" -d '{\"request\":\"standup tomorrow, what changed this week\",\"slide_budget\":3}'
-```
+**Change it by saying so.** *"Drop the second one."* *"Reword slide three, punchier."* *"Add
+whatever touched the API."* Your correction is applied literally — slides you didn't mention keep
+their wording exactly, and nothing you removed comes quietly back.
 
-You get back a `deck_id` and the **selection** — what it chose, what it cut, and the score
-behind every item. This is the part worth reading.
-
-**Change your mind** *(optional)*. List the ids you want, in the order you want them. Anything
-you leave out is dropped, and you can pull something back up from the cut list.
-
-```powershell
-curl.exe -X PUT 127.0.0.1:8000/projects/PROJECT_ID/decks/DECK_ID/selection -H "Content-Type: application/json" -d '{\"keep\":[\"src/auth.py\",\"src/api.py\"]}'
-```
-
-**Get the file.**
-
-```powershell
-curl.exe -X POST 127.0.0.1:8000/projects/PROJECT_ID/decks/DECK_ID/build --output deck.pptx
-```
-
-Open `deck.pptx` in PowerPoint or Keynote and edit it like any other deck.
+**Get the file** at `127.0.0.1:8000/projects/PROJECT_ID/deck/file`. Open `deck.pptx` in
+PowerPoint or Keynote and edit it like any other deck.
 
 ### Working on Standup itself
 
 ```powershell
-python -m pytest          # 122 tests
-ruff check src tests
+python -m pytest          # 140 tests
+ruff check .
 
 cd ui
 npm run dev               # http://localhost:3000, hot reload; expects the API on :8000
-npm test
+npm test                  # 15 tests
 ```
 
 In development the GUI runs on `:3000` and the API on `:8000` — two ports. A real install serves
