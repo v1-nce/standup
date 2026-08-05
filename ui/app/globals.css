@@ -1,26 +1,74 @@
 @import "tailwindcss";
 
+/* A printed page: warm paper, one signal red, everything else ink and hairline. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f4efe5;
+  --ink: #1b1a18;
+  --muted: #7a7267;
+  --rule: #d5cbba;
+  --accent: #c1272d;
+  --dot: #c1272d59;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-accent: var(--accent);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+.halftone {
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size: 6px 6px;
+  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 72%);
+}
+
+/* Every label in this design is mono, uppercase, letterspaced. */
+.label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.stamp {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.figure {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pip {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  border: 1px solid var(--accent);
+  border-radius: 9999px;
+}
+
+.pip-on {
+  background: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
