@@ -18,7 +18,13 @@ export function Rail({ onToggle, open }: { onToggle: () => void; open: boolean }
         <span className="label pl-1">Projects</span>
       </div>
 
-      <nav className="flex min-w-60 flex-col gap-0.5 px-2">
+      <div className="min-w-60 shrink-0 px-3 pb-3">
+        <button className="w-full border border-ink px-3 py-2 text-center font-mono text-xs transition-colors hover:bg-ink/5">
+          + Register a project
+        </button>
+      </div>
+
+      <nav className="scroll-thin flex min-h-0 min-w-60 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3">
         {PROJECTS.map((project, index) => (
           <button
             key={project}
@@ -30,10 +36,6 @@ export function Rail({ onToggle, open }: { onToggle: () => void; open: boolean }
           </button>
         ))}
       </nav>
-
-      <button className="mt-auto mb-3 min-w-60 px-5 py-2 text-left font-mono text-xs text-muted transition-colors hover:text-ink">
-        + Register a project
-      </button>
     </aside>
   );
 }
