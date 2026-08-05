@@ -15,29 +15,25 @@ def client(tmp_path, monkeypatch):
     return TestClient(app)
 
 
-@pytest.fixture
-def codebase(tmp_path):
-    path = tmp_path / "repo"
-    (path / ".git").mkdir(parents=True)
-    return path
-
-
 def test_empty_to_begin_with(client):
     assert client.get("/projects").json() == []
 
 
-def test_create_then_read(client, codebase):
-    created = client.post("/projects", json={"name": "My App", "location": str(codebase)})
+def test_create_then_read(client):
+    created = client.post("/projects", json={"name": "My App"})
     assert created.status_code == 201
     project_id = created.json()["id"]
 
     assert [p["id"] for p in client.get("/projects").json()] == [project_id]
-    assert client.get(f"/projects/{project_id}").json()["name"] == "My App"
+    assert client.get(f"/projects/{project_id}").json() == {
+        **created.json(),
+        "name": "My App",
+        "source": None,
+    }
 
 
-def test_bad_location_is_400(client, tmp_path):
-    response = client.post("/projects", json={"name": "Ghost", "location": str(tmp_path / "nope")})
-    assert response.status_code == 400
+def test_create_without_a_name_is_400(client):
+    assert client.post("/projects", json={"name": "  "}).status_code == 400
 
 
 def test_unknown_project_is_404(client):
@@ -46,10 +42,8 @@ def test_unknown_project_is_404(client):
     assert client.patch("/projects/does-not-exist", json={"name": "Ghost"}).status_code == 404
 
 
-def test_rename_keeps_the_id(client, codebase):
-    project_id = client.post(
-        "/projects", json={"name": "Old", "location": str(codebase)}
-    ).json()["id"]
+def test_rename_keeps_the_id(client):
+    project_id = client.post("/projects", json={"name": "Old"}).json()["id"]
 
     renamed = client.patch(f"/projects/{project_id}", json={"name": "  New  "})
     assert renamed.status_code == 200
@@ -57,39 +51,31 @@ def test_rename_keeps_the_id(client, codebase):
     assert client.get(f"/projects/{project_id}").json()["name"] == "New"
 
 
-def test_rename_to_nothing_is_400(client, codebase):
-    project_id = client.post(
-        "/projects", json={"name": "Real", "location": str(codebase)}
-    ).json()["id"]
+def test_rename_to_nothing_is_400(client):
+    project_id = client.post("/projects", json={"name": "Real"}).json()["id"]
     assert client.patch(f"/projects/{project_id}", json={"name": "   "}).status_code == 400
 
 
-def test_delete(client, codebase):
-    project_id = client.post(
-        "/projects", json={"name": "Temp", "location": str(codebase)}
-    ).json()["id"]
+def test_delete(client):
+    project_id = client.post("/projects", json={"name": "Temp"}).json()["id"]
     assert client.delete(f"/projects/{project_id}").status_code == 204
     assert client.get("/projects").json() == []
 
 
-def test_chat_starts_empty(client, codebase):
-    project_id = client.post(
-        "/projects", json={"name": "Chatty", "location": str(codebase)}
-    ).json()["id"]
+def test_chat_starts_empty(client):
+    project_id = client.post("/projects", json={"name": "Chatty"}).json()["id"]
     assert client.get(f"/projects/{project_id}/chat").json() == []
 
 
 def test_sending_a_message_without_a_model_is_refused_before_it_is_logged(
-    client, codebase, monkeypatch
+    client, monkeypatch
 ):
     monkeypatch.setattr(settings, "llm_provider", "")
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     monkeypatch.setattr(settings, "gemini_api_key", "")
     routes.get_client.cache_clear()
 
-    project_id = client.post(
-        "/projects", json={"name": "Quiet", "location": str(codebase)}
-    ).json()["id"]
+    project_id = client.post("/projects", json={"name": "Quiet"}).json()["id"]
 
     assert client.post(f"/projects/{project_id}/chat", json={"content": "hi"}).status_code == 503
     assert client.get(f"/projects/{project_id}/chat").json() == []

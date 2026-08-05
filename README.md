@@ -137,11 +137,15 @@ for the commands below.
 
 Everything happens in the browser window that just opened.
 
-**Register your project.** Click *+ Register a project* in the left rail and point it at any
-folder with a git repo in it. Rename or delete it there later.
+**Create your project.** Click *+ New project* in the left rail and name it. That is all a
+project needs: a name, and the one deck it holds. Rename or delete it there later.
+
+**Attach what it should talk about.** The `+` above the chat is where a repository, a PDF or a
+document gets registered against the project. **This is not built yet** — until it is, a project
+created in the GUI has nothing to draw on, and the agent will say so rather than invent a deck.
 
 **Ask for a deck.** Type what you need in the chat, in plain English — *"standup tomorrow, three
-slides on what changed this week"*. The first request also indexes the repo, so give it a few
+slides on what changed this week"*. The first request also indexes the resources, so give it a few
 seconds; later ones are fast.
 
 Standup replies with what it chose and why, and the slides appear on the right.

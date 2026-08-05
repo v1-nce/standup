@@ -102,6 +102,18 @@ async def test_the_agent_builds_a_deck_then_reports_on_it(store, project, index)
     assert pipeline.render(store, project.id).is_file()
 
 
+async def test_a_project_with_nothing_attached_talks_but_cannot_build(store):
+    empty = store.create("Empty")
+    client = StubClient(
+        Turn(reply="", commands=[Select(action="select", request="s", scope=Scope(slide_budget=1))]),
+        Turn(reply="There is nothing to build one from yet."),
+    )
+
+    assert await talk(client, store, empty.id, "deck please") == "There is nothing to build one from yet."
+    assert "Nothing attached yet" in client.prompts[0]
+    assert "select rejected: this project has nothing attached" in client.prompts[1]
+
+
 async def test_a_rejected_write_reaches_the_next_round(store, project, index):
     scope = Scope(slide_budget=1)
     chosen = pipeline.select(store, project.id, index, "peek", scope).selection.chosen[0]

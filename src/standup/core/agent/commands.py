@@ -44,8 +44,10 @@ def _standing(deck: Deck) -> str:
     return f"{len(wanted)} chosen, all written"
 
 
-def apply(store: ProjectStore, project_id: str, index: Index, command: Command) -> str:
+def apply(store: ProjectStore, project_id: str, index: Index | None, command: Command) -> str:
     """One command, and the line the model reads next. Its own mistakes come back as text."""
+    if index is None:
+        return f"{command.action} rejected: this project has nothing attached to build a deck from"
     try:
         match command:
             case Select():

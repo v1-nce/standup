@@ -61,25 +61,21 @@ Endpoints marked **later** are reserved and not built.
 
 ## 5. Create project
 
-    Description: Registers a codebase by local path or git URL, cloning remote sources
-                 synchronously.
+    Description: Creates an empty project: a name, one empty deck, and nothing to talk about
+                 yet. Resources are attached afterwards — endpoint 16.
     Endpoint:    POST /projects
-    Input:            {
-                        "name":     str,
-                        "location": str
-                      }
+    Input:            {"name": str}
     Outputs:     201  Project {
                         "id":         str,
                         "name":       str,
                         "created_at": datetime,
-                        "source": {
+                        "source":     null | {
                           "kind":     "local" | "remote",
                           "location": str,
                           "has_git":  bool
                         }
                       }
-                 400  already registered, or not a directory
-                 502  git clone failed
+                 400  the name is blank
 
 ---
 

@@ -78,7 +78,7 @@ def _deck_state(deck: Deck | None) -> str:
 def _prompt(
     store: ProjectStore,
     project_id: str,
-    index: Index,
+    index: Index | None,
     history: list[ChatMessage],
     results: list[str],
     today: datetime,
@@ -91,17 +91,18 @@ def _prompt(
     except NotFound:
         deck = None
 
-    oldest = min((commit.authored_at for commit in index.commits), default=None)
-    facts = (
-        f"PROJECT\n{len(index.files)} files indexed, {len(index.commits)} commits"
+    oldest = min((commit.authored_at for commit in index.commits), default=None) if index else None
+    facts = "PROJECT\n" + (
+        f"{len(index.files)} files indexed, {len(index.commits)} commits"
         + (f" back to {oldest.date().isoformat()}" if oldest else "")
-        + f". Today is {today.date().isoformat()}."
+        if index
+        else "Nothing attached yet, so no deck can be built. Say so if one is asked for"
     )
     said = "\n".join(f"{message.role}: {message.content}" for message in history)
     blocks = [
-        facts,
+        f"{facts}. Today is {today.date().isoformat()}.",
         _deck_state(deck),
-        f"EVIDENCE\n{evidence(deck.selection, index) if deck else ''}",
+        f"EVIDENCE\n{evidence(deck.selection, index) if deck and index else ''}",
         f"CONVERSATION\n{said}",
     ]
     if results:

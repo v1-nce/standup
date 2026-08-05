@@ -1,4 +1,3 @@
-import asyncio
 from functools import lru_cache
 
 from fastapi import APIRouter
@@ -36,8 +35,8 @@ def list_projects() -> list[Project]:
 
 
 @router.post("", status_code=201)
-async def create_project(body: ProjectCreate) -> Project:
-    return await asyncio.to_thread(get_store().create, body.name, body.location)
+def create_project(body: ProjectCreate) -> Project:
+    return get_store().create(body.name)
 
 
 @router.get("/{project_id}")

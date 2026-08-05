@@ -59,10 +59,9 @@ async def settled(client: httpx.AsyncClient, job_id: str) -> dict:
     raise AssertionError("the job never finished")
 
 
-async def test_one_message_produces_a_deck_and_a_reply(wired, repo):
+async def test_one_message_produces_a_deck_and_a_reply(wired, project):
     async with wired as client:
-        created = await client.post("/projects", json={"name": "Demo", "location": str(repo)})
-        project_id = created.json()["id"]
+        project_id = project.id
 
         accepted = await client.post(
             f"/projects/{project_id}/chat", json={"content": "standup tomorrow"}
@@ -85,15 +84,15 @@ async def test_one_message_produces_a_deck_and_a_reply(wired, repo):
         assert downloaded.content[:2] == b"PK"
 
 
-async def test_a_project_with_no_deck_says_so(wired, repo):
+async def test_a_project_with_no_deck_says_so(wired):
     async with wired as client:
-        created = await client.post("/projects", json={"name": "Empty", "location": str(repo)})
+        created = await client.post("/projects", json={"name": "Empty"})
         assert (await client.get(f"/projects/{created.json()['id']}/deck")).status_code == 404
 
 
-async def test_a_second_message_while_one_is_running_is_refused(wired, repo):
+async def test_a_second_message_while_one_is_running_is_refused(wired):
     async with wired as client:
-        created = await client.post("/projects", json={"name": "Busy", "location": str(repo)})
+        created = await client.post("/projects", json={"name": "Busy"})
         project_id = created.json()["id"]
 
         first = await client.post(f"/projects/{project_id}/chat", json={"content": "one"})

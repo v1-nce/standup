@@ -18,15 +18,16 @@ class Source(BaseModel):
 
 
 class Project(BaseModel):
+    """`source` is what the project was given to talk about. None until something is attached."""
+
     id: str
     name: str
     created_at: datetime
-    source: Source
+    source: Source | None = None
 
 
 class ProjectCreate(BaseModel):
     name: str
-    location: str
 
 
 class ProjectRename(BaseModel):

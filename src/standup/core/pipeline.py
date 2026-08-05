@@ -21,10 +21,12 @@ def _room(store: ProjectStore, project_id: str) -> Path:
     return store.paths(project_id).deck
 
 
-async def indexed(store: ProjectStore, project_id: str) -> Index:
-    return await asyncio.to_thread(
-        index_module.ensure, store.working_tree(project_id), store.paths(project_id).index
-    )
+async def indexed(store: ProjectStore, project_id: str) -> Index | None:
+    """None when the project has no codebase attached: there is nothing to derive facts from."""
+    tree = store.working_tree(project_id)
+    if tree is None:
+        return None
+    return await asyncio.to_thread(index_module.ensure, tree, store.paths(project_id).index)
 
 
 def load(store: ProjectStore, project_id: str) -> Selection:

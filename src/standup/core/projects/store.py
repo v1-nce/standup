@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import hashlib
 import re
 import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from standup.core.models import Project, ProjectPaths, Source, SourceKind
 from standup.errors import InvalidInput, NotFound, StandupError, Upstream
@@ -16,11 +16,6 @@ _REMOTE = re.compile(r"^(https?://|git@|ssh://)")
 
 def _slug(name: str) -> str:
     return _SLUG.sub("-", name.lower()).strip("-") or "project"
-
-
-def _identify(name: str, location: str) -> str:
-    digest = hashlib.sha256(location.encode()).hexdigest()[:8]
-    return f"{_slug(name)}-{digest}"
 
 
 def _clone(url: str, destination: Path) -> None:
@@ -50,40 +45,40 @@ class ProjectStore:
             clone=root / "clone",
         )
 
-    def create(self, name: str, location: str) -> Project:
-        is_remote = bool(_REMOTE.match(location))
-        project_id = _identify(name, location)
-        paths = self.paths(project_id)
-        if paths.root.exists():
-            raise InvalidInput(f"{location} is already registered as {project_id}")
+    def create(self, name: str, location: str | None = None) -> Project:
+        """A project is a name and an empty deck. `location` attaches a codebase to it."""
+        wanted = name.strip()
+        if not wanted:
+            raise InvalidInput("A project needs a name")
 
+        project_id = f"{_slug(wanted)}-{uuid4().hex[:8]}"
+        paths = self.paths(project_id)
         for directory in (paths.root, paths.index, paths.chat, paths.deck):
             directory.mkdir(parents=True)
 
         try:
-            if is_remote:
-                _clone(location, paths.clone)
-                working_tree = paths.clone
-            else:
-                working_tree = Path(location).expanduser().resolve()
-                if not working_tree.is_dir():
-                    raise InvalidInput(f"{location} is not a directory")
+            source = self._attach(location, paths.clone) if location else None
         except StandupError:
             shutil.rmtree(paths.root, ignore_errors=True)
             raise
 
-        project = Project(
-            id=project_id,
-            name=name,
-            created_at=datetime.now(UTC),
-            source=Source(
-                kind=SourceKind.REMOTE if is_remote else SourceKind.LOCAL,
-                location=location if is_remote else str(working_tree),
-                has_git=(working_tree / ".git").exists(),
-            ),
-        )
+        project = Project(id=project_id, name=wanted, created_at=datetime.now(UTC), source=source)
         self._write(paths.root, project)
         return project
+
+    def _attach(self, location: str, clone: Path) -> Source:
+        if _REMOTE.match(location):
+            _clone(location, clone)
+            return Source(kind=SourceKind.REMOTE, location=location, has_git=True)
+
+        working_tree = Path(location).expanduser().resolve()
+        if not working_tree.is_dir():
+            raise InvalidInput(f"{location} is not a directory")
+        return Source(
+            kind=SourceKind.LOCAL,
+            location=str(working_tree),
+            has_git=(working_tree / ".git").exists(),
+        )
 
     def list(self) -> list[Project]:
         if not self._root.is_dir():
@@ -110,11 +105,14 @@ class ProjectStore:
         self.get(project_id)
         shutil.rmtree(self._root / project_id)
 
-    def working_tree(self, project_id: str) -> Path:
-        project = self.get(project_id)
-        if project.source.kind is SourceKind.REMOTE:
+    def working_tree(self, project_id: str) -> Path | None:
+        """None until a codebase is attached — a project can exist with nothing to index."""
+        source = self.get(project_id).source
+        if source is None:
+            return None
+        if source.kind is SourceKind.REMOTE:
             return self.paths(project_id).clone
-        return Path(project.source.location)
+        return Path(source.location)
 
     def _write(self, root: Path, project: Project) -> None:
         (root / "project.json").write_text(project.model_dump_json(indent=2), encoding="utf-8")

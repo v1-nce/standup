@@ -16,7 +16,7 @@ Verified 2026-08-05. **Backend: 140 tests. Frontend: 15.** Both in CI.
 
 - **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (deterministic scope validation + candidates), selection (five signals, weights, MMR), present (groundedness validation, `.pptx`), the agent loop and its three commands, the job runner, the project store and chat log, the provider seam over Anthropic and Gemini, and the HTTP API over all of it.
 - **Wired end to end** — the GUI reads and writes real projects, sends a message, polls the job, and renders the deck the agent wrote. Types are generated from the backend's OpenAPI schema.
-- **Not built** — diagrams, SSE, prompt caching, a project's context database (the `+` is disabled), every benchmark, packaging. Briefs were a designed stage and the empty seam holding their place is now **deleted**; they return only if the quality benchmark earns them — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6.
+- **Not built** — diagrams, SSE, prompt caching, a project's context database (the `+` is disabled), every benchmark, packaging. **A project is created from a name alone and starts with nothing attached**; `ProjectStore.create` still takes an optional `location`, which is the seam the `+` will use, and until then nothing over HTTP can attach a codebase. Briefs were a designed stage and the empty seam holding their place is now **deleted**; they return only if the quality benchmark earns them — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6.
 - **Never measured** — every tuning constant. `LAMBDA = 0.7`, the whole `WEIGHTS` table, `MAX_COMMITS`, `MIN_NAME_LENGTH`, and now `MAX_ROUNDS = 5` are guesses standing in until the quality benchmark exists.
 
 ## Stack
