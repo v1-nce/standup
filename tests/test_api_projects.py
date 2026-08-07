@@ -28,7 +28,7 @@ def test_create_then_read(client):
     assert client.get(f"/projects/{project_id}").json() == {
         **created.json(),
         "name": "My App",
-        "source": None,
+        "resources": [],
     }
 
 

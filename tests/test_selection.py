@@ -28,24 +28,24 @@ def index():
         built_at=TODAY,
         files=[
             FileFacts(path=path, content_hash="h")
-            for path in ("src/auth/login.py", "src/auth/session.py", "src/billing/invoice.py")
+            for path in ("app/src/auth/login.py", "app/src/auth/session.py", "app/src/billing/invoice.py")
         ],
         commits=[
-            commit("big", 2, "src/auth/login.py", size=400),
-            commit("small", 1, "src/auth/session.py", size=5),
-            commit("mid", 1, "src/billing/invoice.py", size=50),
+            commit("big", 2, "app/src/auth/login.py", size=400),
+            commit("small", 1, "app/src/auth/session.py", size=5),
+            commit("mid", 1, "app/src/billing/invoice.py", size=50),
         ],
-        rank={"src/auth/login.py": 0.5, "src/billing/invoice.py": 0.2},
-        emphasis={"src/billing/invoice.py": 1.0},
+        rank={"app/src/auth/login.py": 0.5, "app/src/billing/invoice.py": 0.2},
+        emphasis={"app/src/billing/invoice.py": 1.0},
     )
 
 
 @pytest.fixture
 def candidates():
     return [
-        Candidate(id="src/auth/login.py", title="login.py", paths=["src/auth/login.py"], commits=["big"]),
-        Candidate(id="src/auth/session.py", title="session.py", paths=["src/auth/session.py"], commits=["small"]),
-        Candidate(id="src/billing/invoice.py", title="invoice.py", paths=["src/billing/invoice.py"], commits=["mid"]),
+        Candidate(id="app/src/auth/login.py", title="login.py", paths=["app/src/auth/login.py"], commits=["big"]),
+        Candidate(id="app/src/auth/session.py", title="session.py", paths=["app/src/auth/session.py"], commits=["small"]),
+        Candidate(id="app/src/billing/invoice.py", title="invoice.py", paths=["app/src/billing/invoice.py"], commits=["mid"]),
     ]
 
 
@@ -59,16 +59,16 @@ def test_every_signal_is_reported_for_every_candidate(index, candidates):
 
 def test_a_candidate_with_no_evidence_for_a_signal_scores_zero_not_missing(index, candidates):
     signals = measure(candidates, index, Scope(slide_budget=2))
-    assert signals["src/auth/session.py"]["centrality"] == 0.0
-    assert signals["src/auth/login.py"]["churn"] == 1.0
+    assert signals["app/src/auth/session.py"]["centrality"] == 0.0
+    assert signals["app/src/auth/login.py"]["churn"] == 1.0
 
 
 def test_the_request_weights_a_candidate_up_without_excluding_the_others(index, candidates):
     quiet = measure(candidates, index, Scope(slide_budget=2))
     steered = measure(candidates, index, Scope(keywords=["billing"], slide_budget=2))
 
-    assert steered["src/billing/invoice.py"]["affinity"] > quiet["src/billing/invoice.py"]["affinity"]
-    assert relevance(steered["src/auth/login.py"]) > 0
+    assert steered["app/src/billing/invoice.py"]["affinity"] > quiet["app/src/billing/invoice.py"]["affinity"]
+    assert relevance(steered["app/src/auth/login.py"]) > 0
 
 
 def test_every_registered_signal_carries_a_weight():
@@ -76,10 +76,10 @@ def test_every_registered_signal_carries_a_weight():
 
 
 def test_overlap_sees_a_shared_directory_and_a_shared_commit():
-    here = Candidate(id="src/auth/login.py", title="a", commits=["x"])
-    sibling = Candidate(id="src/auth/session.py", title="b", commits=["y"])
-    stranger = Candidate(id="docs/guide.md", title="c", commits=["z"])
-    co_committed = Candidate(id="docs/other.md", title="d", commits=["x"])
+    here = Candidate(id="app/src/auth/login.py", title="a", commits=["x"])
+    sibling = Candidate(id="app/src/auth/session.py", title="b", commits=["y"])
+    stranger = Candidate(id="app/docs/guide.md", title="c", commits=["z"])
+    co_committed = Candidate(id="app/docs/other.md", title="d", commits=["x"])
 
     assert _overlap(here, sibling) == 1.0
     assert _overlap(here, stranger) == 0.0
@@ -90,20 +90,20 @@ def test_overlap_sees_a_shared_directory_and_a_shared_commit():
 def rivals():
     """b repeats a's subsystem; c opens a new one. Only their relevance gap differs per case."""
     return [
-        Candidate(id="src/auth/a.py", title="a", commits=[]),
-        Candidate(id="src/auth/b.py", title="b", commits=[]),
-        Candidate(id="src/billing/c.py", title="c", commits=[]),
+        Candidate(id="app/src/auth/a.py", title="a", commits=[]),
+        Candidate(id="app/src/auth/b.py", title="b", commits=[]),
+        Candidate(id="app/src/billing/c.py", title="c", commits=[]),
     ]
 
 
 def test_a_near_tie_goes_to_the_untouched_subsystem(rivals):
-    scores = {"src/auth/a.py": 1.0, "src/auth/b.py": 0.72, "src/billing/c.py": 0.70}
-    assert [c.id for c in ordered(rivals, scores, 2)] == ["src/auth/a.py", "src/billing/c.py"]
+    scores = {"app/src/auth/a.py": 1.0, "app/src/auth/b.py": 0.72, "app/src/billing/c.py": 0.70}
+    assert [c.id for c in ordered(rivals, scores, 2)] == ["app/src/auth/a.py", "app/src/billing/c.py"]
 
 
 def test_diversity_does_not_overturn_a_wide_relevance_gap(rivals):
-    scores = {"src/auth/a.py": 1.0, "src/auth/b.py": 0.9, "src/billing/c.py": 0.5}
-    assert [c.id for c in ordered(rivals, scores, 2)] == ["src/auth/a.py", "src/auth/b.py"]
+    scores = {"app/src/auth/a.py": 1.0, "app/src/auth/b.py": 0.9, "app/src/billing/c.py": 0.5}
+    assert [c.id for c in ordered(rivals, scores, 2)] == ["app/src/auth/a.py", "app/src/auth/b.py"]
 
 
 def test_selection_carries_what_was_cut_and_why(index, candidates):

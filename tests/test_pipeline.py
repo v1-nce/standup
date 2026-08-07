@@ -5,6 +5,7 @@ from standup.core.gather import candidates
 from standup.core.models import Scope, Slide
 from standup.core.selection import choose
 from standup.errors import InvalidInput, NotFound
+from tests.conftest import pdf_saying
 
 
 def slides_for(deck) -> list[Slide]:
@@ -56,6 +57,18 @@ def test_an_edit_is_obeyed_literally(store, project, index):
     assert backwards[1] in {e.candidate.id for e in trimmed.selection.cut}
 
 
+def test_naming_the_same_item_twice_asks_for_it_once(store, project, index):
+    """Repeats used to survive as duplicate entries, then render as one block copied per slide."""
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    twice = deck.selection.chosen[0].candidate.id
+
+    revised = pipeline.edit(store, project.id, [twice, twice, twice])
+    assert [entry.candidate.id for entry in revised.selection.chosen] == [twice]
+
+    written = pipeline.write(store, project.id, index, slides_for(revised))
+    assert [slide.candidate_id for slide in written.slides] == [twice]
+
+
 def test_editing_to_something_that_was_never_a_candidate_is_refused(store, project, index):
     pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
     with pytest.raises(NotFound):
@@ -80,6 +93,34 @@ def test_a_slide_naming_something_that_does_not_exist_is_rejected(store, project
     with pytest.raises(InvalidInput, match="no file 'src/imaginary.py'"):
         pipeline.write(store, project.id, index, drafted)
     assert not (store.paths(project.id).deck / pipeline.PLAN_FILE).is_file()
+
+
+async def test_detaching_a_resource_takes_the_deck_it_produced_with_it(store, project):
+    """Left behind, its ids reach the agent as evidence and read as context that still exists."""
+    paper = store.attach_file(project.id, "notes.pdf", pdf_saying("Router notes"))
+    both = await pipeline.indexed(store, project.id)
+    deck = pipeline.select(store, project.id, both, "everything", Scope(slide_budget=5))
+    pipeline.write(store, project.id, both, slides_for(deck))
+    assert any(entry.candidate.id.startswith(paper.id) for entry in deck.selection.chosen)
+
+    store.detach(project.id, paper.id)
+    pipeline.forget(store, project.id, paper.id)
+
+    left = pipeline.read(store, project.id)
+    named = [entry.candidate.id for entry in [*left.selection.chosen, *left.selection.cut]]
+    assert named and not any(item.startswith(paper.id) for item in named)
+    assert not any(slide.candidate_id.startswith(paper.id) for slide in left.slides or [])
+    assert not (store.paths(project.id).deck / pipeline.DECK_FILE).is_file()
+
+
+def test_detaching_the_last_resource_leaves_no_deck_at_all(store, project, resource_id, index):
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+
+    store.detach(project.id, resource_id)
+    pipeline.forget(store, project.id, resource_id)
+
+    with pytest.raises(NotFound):
+        pipeline.read(store, project.id)
 
 
 def test_rewriting_one_slide_leaves_the_others_untouched(store, project, index):

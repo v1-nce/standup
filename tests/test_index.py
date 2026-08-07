@@ -4,9 +4,11 @@ import pytest
 
 from standup.core import index
 from standup.core.index.code import module_path, parse, walk
-from standup.core.index.docs import emphasis
+from standup.core.index.docs import emphasis, prose, read, readable
 from standup.core.index.graph import aliases, edges, rank
 from standup.core.index.history import commits
+from standup.errors import InvalidInput
+from tests.conftest import pdf_saying
 
 
 @pytest.fixture
@@ -24,13 +26,17 @@ def repo(tmp_path):
     return root
 
 
-def test_walk_prunes_vendored_and_dotted_directories(repo):
+def test_walk_prunes_vendored_and_dotted_names(repo):
     (repo / ".hidden").mkdir()
     (repo / ".hidden" / "secret.py").write_text("x = 1\n")
+    (repo / ".env").write_text("API_KEY=sk-real-secret\n")
+
     walked = {p.name for p in walk(repo)}
     assert "hub.py" in walked
     assert "index.js" not in walked
     assert "secret.py" not in walked
+    # A repository's own credentials are a file tree-sitter parses happily. Never indexed.
+    assert ".env" not in walked
 
 
 def test_parse_extracts_symbols_and_import_tokens(repo):
@@ -134,7 +140,7 @@ def test_a_config_file_never_absorbs_rank_from_a_package_of_the_same_name(repo):
 
 
 def test_emphasis_follows_what_the_project_writes_about(repo):
-    scores = emphasis(repo, parse(repo))
+    scores = emphasis(prose(repo), parse(repo))
     assert scores["src/hub.py"] == 1.0
     assert "src/leaf.py" not in scores
 
@@ -193,14 +199,79 @@ def test_a_package_manifest_names_the_directory_it_stands_for(repo):
     assert edges(files, aliases(repo))["src/user.ts"] == {"packages/widget/src/index.ts"}
 
 
-def test_ensure_reuses_the_stored_index_until_the_tree_changes(repo, tmp_path):
-    index_dir = tmp_path / "index"
-    first = index.ensure(repo, index_dir)
-    assert (index_dir / index.INDEX_FILE).is_file()
+def test_merging_carries_every_path_home_to_its_resource(repo, tmp_path):
+    note = tmp_path / "notes.md"
+    note.write_text("The Router is the point of all this.\n")
 
-    assert index.ensure(repo, index_dir).built_at == first.built_at
+    whole = index.merged([("app", index.build(repo)), ("notes", index.build(note))])
+    paths = {facts.path for facts in whole.files}
+
+    assert "app/src/hub.py" in paths
+    assert "notes/notes.md" in paths
+    # The document's words are evidence, so they travel with it and reach the model.
+    assert "Router" in next(f.excerpt for f in whole.files if f.path == "notes/notes.md")
+
+
+def test_a_small_resource_cannot_flatten_a_large_one(repo, tmp_path):
+    """Rank is relative. Computed per resource and merged, a lone file would score ~1.0 and
+    every file in the real repository would collapse to nothing."""
+    note = tmp_path / "notes.md"
+    note.write_text("hello\n")
+
+    whole = index.merged([("app", index.build(repo)), ("notes", index.build(note))])
+
+    assert whole.rank["app/src/hub.py"] > whole.rank["app/src/leaf.py"]
+    assert whole.rank["app/src/hub.py"] > whole.rank.get("notes/notes.md", 0.0)
+
+
+def test_an_attached_document_lifts_what_it_writes_about(repo, tmp_path):
+    note = tmp_path / "notes.md"
+    note.write_text("Router, Router, Router. The dispatch path is the whole story.\n")
+
+    alone = index.merged([("app", index.build(repo))])
+    with_note = index.merged([("app", index.build(repo)), ("notes", index.build(note))])
+
+    assert with_note.emphasis["app/src/hub.py"] > alone.emphasis.get("app/src/leaf.py", 0.0)
+    assert "app/src/hub.py" in with_note.emphasis
+
+
+def test_a_lone_file_is_named_by_itself_and_read_for_its_text(tmp_path):
+    note = tmp_path / "notes.md"
+    note.write_text("# Standup\n\nWhat the meeting is for.\n")
+
+    facts = index.build(note)
+    assert [f.path for f in facts.files] == ["notes.md"]
+    assert "What the meeting is for" in facts.text
+
+
+def test_a_file_with_no_readable_text_is_refused_rather_than_attached_empty(tmp_path):
+    blank = tmp_path / "empty.md"
+    blank.write_text("   \n")
+    with pytest.raises(InvalidInput, match="no readable text"):
+        index.build(blank)
+
+
+def test_readable_covers_documents_and_source_but_not_a_spreadsheet():
+    assert readable("spec.pdf")
+    assert readable("notes.md")
+    assert readable("main.py")
+    assert not readable("book.epub")
+
+
+def test_a_pdf_is_read_as_text(tmp_path):
+    document = tmp_path / "spec.pdf"
+    document.write_bytes(pdf_saying("Standup selects what matters"))
+    assert "Standup selects what matters" in read(document)
+
+
+def test_ensure_reuses_the_stored_facts_until_the_resource_changes(repo, tmp_path):
+    facts_dir = tmp_path / "index"
+    first = index.ensure(repo, facts_dir)
+    assert (facts_dir / index.FACTS_FILE).is_file()
+
+    assert index.ensure(repo, facts_dir).built_at == first.built_at
 
     (repo / "src" / "new.py").write_text("def fresh():\n    pass\n")
-    rebuilt = index.ensure(repo, index_dir)
+    rebuilt = index.ensure(repo, facts_dir)
     assert rebuilt.fingerprint != first.fingerprint
     assert "src/new.py" in {f.path for f in rebuilt.files}
