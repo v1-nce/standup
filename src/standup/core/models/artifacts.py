@@ -12,10 +12,13 @@ class Symbol(BaseModel):
 
 
 class FileFacts(BaseModel):
+    """`excerpt` is filled only for a file attached on its own, whose text is its whole evidence."""
+
     path: str
     content_hash: str
     symbols: list[Symbol] = []
     imports: list[str] = []
+    excerpt: str = ""
 
 
 class Commit(BaseModel):
@@ -28,8 +31,21 @@ class Commit(BaseModel):
     changes: dict[str, int] = {}
 
 
+class Facts(BaseModel):
+    """One resource's derived facts, cached beside it. Ranking waits for the merge — it is
+    relative, and a three-file folder must not outrank a three-thousand-file repository."""
+
+    fingerprint: str
+    built_at: datetime
+    files: list[FileFacts] = []
+    commits: list[Commit] = []
+    history_complete: bool = True
+    aliases: dict[str, str] = {}
+    text: str = ""
+
+
 class Index(BaseModel):
-    """Every derived fact about a project. Built on registration and on change, never per deck."""
+    """Every derived fact about a project: its resources merged, then ranked as one."""
 
     fingerprint: str
     built_at: datetime

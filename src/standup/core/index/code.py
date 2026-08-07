@@ -33,13 +33,22 @@ _SPECIFIER_SUFFIXES = (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".c
 
 
 def walk(root: Path) -> Iterator[Path]:
-    """Every file worth indexing. Dotted and vendored directories are pruned, not visited."""
+    """Every file worth indexing. Dotted and vendored names are pruned, not visited."""
+    if root.is_file():
+        yield root
+        return
     for directory, subdirectories, filenames in os.walk(root):
         subdirectories[:] = [
             d for d in subdirectories if d not in SKIP_DIRS and not d.startswith(".")
         ]
         for name in filenames:
-            yield Path(directory) / name
+            if not name.startswith("."):
+                yield Path(directory) / name
+
+
+def relative(root: Path, path: Path) -> str:
+    """How a file is named inside its resource. One attached on its own is named by itself."""
+    return path.name if root.is_file() else path.relative_to(root).as_posix()
 
 
 def module_path(statement: str) -> str | None:
@@ -97,7 +106,7 @@ def parse(root: Path) -> list[FileFacts]:
 
         facts.append(
             FileFacts(
-                path=path.relative_to(root).as_posix(),
+                path=relative(root, path),
                 content_hash=hashlib.sha256(source.encode()).hexdigest()[:16],
                 symbols=[
                     Symbol(name=s.name, kind=str(s.kind), line=s.span.start_line + 1)

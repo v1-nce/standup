@@ -22,11 +22,61 @@ def _room(store: ProjectStore, project_id: str) -> Path:
 
 
 async def indexed(store: ProjectStore, project_id: str) -> Index | None:
-    """None when the project has no codebase attached: there is nothing to derive facts from."""
-    tree = store.working_tree(project_id)
-    if tree is None:
+    """None when nothing is attached: there is nothing to derive facts from."""
+    resources = store.get(project_id).resources
+    if not resources:
         return None
-    return await asyncio.to_thread(index_module.ensure, tree, store.paths(project_id).index)
+    return await asyncio.to_thread(_merge, store, project_id)
+
+
+def _merge(store: ProjectStore, project_id: str) -> Index:
+    home = store.paths(project_id).index
+    resources = store.get(project_id).resources
+    for resource in resources:
+        if not Path(resource.location).exists():
+            raise InvalidInput(f"{resource.name} is no longer at {resource.location}")
+    return index_module.merged(
+        (resource.id, index_module.ensure(Path(resource.location), home / resource.id))
+        for resource in resources
+    )
+
+
+def forget(store: ProjectStore, project_id: str, resource_id: str) -> None:
+    """A detached resource takes the deck it produced with it.
+
+    Every candidate id begins with the resource it came from, so the prefix is the whole test.
+    Without this the deck keeps citing files nothing can index, and the agent reads those ids back
+    as context that still exists.
+    """
+    room = _room(store, project_id)
+    record = room / SELECTION_FILE
+    if not record.is_file():
+        return
+
+    gone = f"{resource_id}/"
+    (room / DECK_FILE).unlink(missing_ok=True)  # rendered on download; never a copy left behind
+
+    chosen = Selection.model_validate_json(record.read_text(encoding="utf-8"))
+    held = chosen.model_copy(
+        update={
+            "chosen": [item for item in chosen.chosen if not item.candidate.id.startswith(gone)],
+            "cut": [item for item in chosen.cut if not item.candidate.id.startswith(gone)],
+        }
+    )
+    if not held.chosen and not held.cut:
+        record.unlink()
+        (room / PLAN_FILE).unlink(missing_ok=True)
+        return
+    _put(store, project_id, SELECTION_FILE, held)
+
+    written = _plan(store, project_id)
+    if not written:
+        return
+    kept = [slide for slide in written.slides if not slide.candidate_id.startswith(gone)]
+    if kept:
+        _put(store, project_id, PLAN_FILE, SlidePlan(slides=kept))
+    else:
+        (room / PLAN_FILE).unlink()
 
 
 def load(store: ProjectStore, project_id: str) -> Selection:

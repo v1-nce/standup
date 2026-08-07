@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from standup.api.context import router as context_router
 from standup.api.decks import router as decks_router
 from standup.api.jobs import router as jobs_router
 from standup.api.projects import router as projects_router
@@ -25,6 +26,7 @@ app.add_middleware(
 
 app.include_router(system_router)
 app.include_router(projects_router)
+app.include_router(context_router)
 app.include_router(decks_router)
 app.include_router(jobs_router)
 app.add_exception_handler(StandupError, handle_error)

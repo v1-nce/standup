@@ -54,10 +54,15 @@ def _affinity(candidates: list[Candidate], index: Index, scope: Scope) -> dict[s
         return {}
 
     by_sha = {commit.sha: commit for commit in index.commits}
+    excerpts = {facts.path: facts.excerpt for facts in index.files if facts.excerpt}
     hits = {}
     for candidate in candidates:
         haystack = " ".join(
-            [candidate.id, *(c.message for c in _commits(candidate, by_sha))]
+            [
+                candidate.id,
+                excerpts.get(candidate.id, ""),
+                *(c.message for c in _commits(candidate, by_sha)),
+            ]
         ).lower()
         found = float(sum(haystack.count(term) for term in terms))
         if found:

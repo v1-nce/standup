@@ -68,4 +68,4 @@ async def send_message(project_id: str, body: ChatSend) -> jobs.Job:
     log = _chat(project_id)
     client = routes.get_client()
     log.append("user", body.content)
-    return jobs.start(project_id, "thinking", _turn(client, project_id, log))
+    return jobs.start("thinking", _turn(client, project_id, log), lock=project_id)

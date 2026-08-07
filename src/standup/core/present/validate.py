@@ -35,14 +35,22 @@ def problems(plan: SlidePlan, selection: Selection, index: Index) -> list[str]:
     paths = {facts.path for facts in index.files}
     paths |= {path for commit in index.commits for path in commit.changes}
     suffixes = {PurePosixPath(path).suffix for path in paths} - {""}
-    symbols = {symbol.name for facts in index.files for symbol in facts.symbols}
 
     for slide in plan.slides:
+        home = f"{slide.candidate_id.split('/', 1)[0]}/"
+        theirs = {path for path in paths if path.startswith(home)}
+        symbols = {
+            symbol.name
+            for facts in index.files
+            if facts.path.startswith(home)
+            for symbol in facts.symbols
+        }
+
         for text in (slide.title, *slide.bullets):
             faults += [
                 f"{slide.candidate_id}: there is no file {named!r}"
                 for named in _named_files(text, suffixes)
-                if not _known(named, paths)
+                if not _known(named, theirs)
             ]
             faults += [
                 f"{slide.candidate_id}: there is no {name!r} in this project"

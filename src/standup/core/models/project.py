@@ -6,24 +6,28 @@ from typing import Literal
 from pydantic import BaseModel
 
 
-class SourceKind(str, Enum):
-    LOCAL = "local"
-    REMOTE = "remote"
+class ResourceKind(str, Enum):
+    FOLDER = "folder"
+    FILE = "file"
 
 
-class Source(BaseModel):
-    kind: SourceKind
+class Resource(BaseModel):
+    """One thing a project may draw on. `id` prefixes every path derived from it."""
+
+    id: str
+    kind: ResourceKind
+    name: str
     location: str
-    has_git: bool
+    added_at: datetime
 
 
 class Project(BaseModel):
-    """`source` is what the project was given to talk about. None until something is attached."""
+    """`resources` is what the project may talk about. Empty until something is attached."""
 
     id: str
     name: str
     created_at: datetime
-    source: Source | None = None
+    resources: list[Resource] = []
 
 
 class ProjectCreate(BaseModel):
@@ -32,6 +36,12 @@ class ProjectCreate(BaseModel):
 
 class ProjectRename(BaseModel):
     name: str
+
+
+class ContextAdd(BaseModel):
+    """Paths on this machine — folders, files, or a mix of both."""
+
+    locations: list[str]
 
 
 class ChatSend(BaseModel):
@@ -51,4 +61,4 @@ class ProjectPaths(BaseModel):
     index: Path
     chat: Path
     deck: Path
-    clone: Path
+    context: Path

@@ -47,6 +47,9 @@ wording exactly.
   Never name a file, function or module that is not in that item's evidence. Describe what
   changed rather than showing code.
 
+Every path begins with the resource it came from - an attached folder or file - not a directory
+of it. Keep that first segment when you name a path, and never mix two resources on one slide.
+
 There is no command to produce the file: the slides are the deck, and the `.pptx` is written when
 it is downloaded.
 

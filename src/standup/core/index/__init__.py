@@ -1,16 +1,30 @@
 """Registered resources → derived facts. Runs on registration and on change, never per deck."""
 
 import hashlib
+import shutil
+import threading
+from collections import defaultdict
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from standup.core.index.code import parse, walk
-from standup.core.index.docs import emphasis
+from standup.core.index.code import parse, relative, walk
+from standup.core.index.docs import emphasis, prose, read
 from standup.core.index.graph import aliases, rank
 from standup.core.index.history import commits
-from standup.core.models import Index
+from standup.core.models import Commit, Facts, FileFacts, Index
+from standup.errors import InvalidInput
 
-INDEX_FILE = "index.json"
+FACTS_FILE = "facts.json"
+EXCERPT_CHARS = 4_000
+
+_BUILDS: defaultdict[Path, threading.Lock] = defaultdict(threading.Lock)
+_BUILDS_GUARD = threading.Lock()
+
+
+def _lock_on(facts_dir: Path) -> threading.Lock:
+    with _BUILDS_GUARD:
+        return _BUILDS[facts_dir]
 
 
 def fingerprint(root: Path) -> str:
@@ -18,37 +32,107 @@ def fingerprint(root: Path) -> str:
     digest = hashlib.sha256()
     for path in sorted(walk(root)):
         stat = path.stat()
-        digest.update(f"{path.relative_to(root).as_posix()}:{stat.st_size}:{stat.st_mtime_ns}\n".encode())
+        digest.update(f"{relative(root, path)}:{stat.st_size}:{stat.st_mtime_ns}\n".encode())
     return digest.hexdigest()[:16]
 
 
-def build(root: Path) -> Index:
-    files = parse(root)
+def build(root: Path) -> Facts:
+    """One resource's facts. A folder is walked; a file attached on its own is read."""
+    if root.is_file():
+        return _document(root)
+
     history, complete = commits(root)
-    return Index(
+    return Facts(
         fingerprint=fingerprint(root),
+        built_at=datetime.now(UTC),
+        files=parse(root),
+        commits=history,
+        history_complete=complete,
+        aliases=aliases(root),
+        text=prose(root),
+    )
+
+
+def _document(path: Path) -> Facts:
+    """A lone file has no history and no imports, so its text is the only evidence there is."""
+    text = read(path)
+    if not text.strip():
+        raise InvalidInput(f"{path.name} has no readable text")
+
+    parsed = parse(path)
+    facts = parsed[0] if parsed else FileFacts(path=path.name, content_hash=_digest(text))
+    return Facts(
+        fingerprint=fingerprint(path),
+        built_at=datetime.now(UTC),
+        files=[facts.model_copy(update={"excerpt": text[:EXCERPT_CHARS]})],
+        text=text,
+    )
+
+
+def ensure(root: Path, facts_dir: Path) -> Facts:
+    """The stored facts if the resource is unchanged, fresh ones otherwise."""
+    with _lock_on(facts_dir):
+        record = facts_dir / FACTS_FILE
+        current = fingerprint(root)
+        if record.is_file():
+            stored = Facts.model_validate_json(record.read_text(encoding="utf-8"))
+            if stored.fingerprint == current:
+                return stored
+
+        facts = build(root)
+        facts_dir.mkdir(parents=True, exist_ok=True)
+        record.write_text(facts.model_dump_json(), encoding="utf-8")
+        return facts
+
+
+def forget(facts_dir: Path) -> None:
+    """Drop what was derived from a resource. Waits for a build rather than racing it."""
+    with _lock_on(facts_dir):
+        shutil.rmtree(facts_dir, ignore_errors=True)
+
+
+def merged(parts: Iterable[tuple[str, Facts]]) -> Index:
+    """Many resources, one picture. Every path carries the resource it came from, so two
+    repositories cannot collide on `src/main.py`, and ranking runs once over the whole set."""
+    files: list[FileFacts] = []
+    history: list[Commit] = []
+    declared: dict[str, str] = {}
+    prose_of_all: list[str] = []
+    complete = True
+    seen: list[str] = []
+
+    for resource_id, part in parts:
+        files += [
+            facts.model_copy(update={"path": f"{resource_id}/{facts.path}"}) for facts in part.files
+        ]
+        history += [
+            commit.model_copy(
+                update={
+                    # Two clones of one repository share every sha, and one would overwrite the other.
+                    "sha": f"{resource_id}:{commit.sha}",
+                    "changes": {f"{resource_id}/{p}": n for p, n in commit.changes.items()},
+                }
+            )
+            for commit in part.commits
+        ]
+        declared |= {name: f"{resource_id}/{at}" for name, at in part.aliases.items()}
+        prose_of_all.append(part.text)
+        complete &= part.history_complete
+        seen.append(f"{resource_id}:{part.fingerprint}")
+
+    return Index(
+        fingerprint=_digest("|".join(sorted(seen))),
         built_at=datetime.now(UTC),
         files=files,
         commits=history,
         history_complete=complete,
-        rank=rank(files, aliases(root)),
-        emphasis=emphasis(root, files),
+        rank=rank(files, declared),
+        emphasis=emphasis("\n".join(prose_of_all), files),
     )
 
 
-def ensure(root: Path, index_dir: Path) -> Index:
-    """The stored index if the working tree is unchanged, a fresh one otherwise."""
-    record = index_dir / INDEX_FILE
-    current = fingerprint(root)
-    if record.is_file():
-        stored = Index.model_validate_json(record.read_text(encoding="utf-8"))
-        if stored.fingerprint == current:
-            return stored
-
-    index = build(root)
-    index_dir.mkdir(parents=True, exist_ok=True)
-    record.write_text(index.model_dump_json(), encoding="utf-8")
-    return index
+def _digest(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-__all__ = ["INDEX_FILE", "build", "ensure", "fingerprint"]
+__all__ = ["EXCERPT_CHARS", "FACTS_FILE", "build", "ensure", "fingerprint", "forget", "merged"]

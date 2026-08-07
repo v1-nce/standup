@@ -22,6 +22,7 @@ class Job(BaseModel):
 
 _JOBS: dict[str, Job] = {}
 _LIVE: dict[str, asyncio.Task[None]] = {}
+_LOOSE: set[asyncio.Task[None]] = set()
 
 
 async def _run(job: Job, work: Coroutine[None, None, None]) -> None:
@@ -34,16 +35,22 @@ async def _run(job: Job, work: Coroutine[None, None, None]) -> None:
         job.state, job.detail = "failed", f"{type(failure).__name__}: {failure}"
 
 
-def start(project_id: str, step: str, work: Coroutine[None, None, None]) -> Job:
-    """One job per project: a second turn would overwrite the deck the first is still writing."""
-    running = _LIVE.get(project_id)
+def start(step: str, work: Coroutine[None, None, None], *, lock: str | None = None) -> Job:
+    """`lock` refuses a second job for the same key — a second turn would overwrite the deck the
+    first is still writing. Work that serialises itself passes none and is never refused."""
+    running = _LIVE.get(lock) if lock else None
     if running and not running.done():
         work.close()
-        raise Busy(f"{project_id} is already working")
+        raise Busy(f"{lock} is already working")
 
     job = Job(id=uuid4().hex[:12], state="running", step=step)
     _JOBS[job.id] = job
-    _LIVE[project_id] = asyncio.create_task(_run(job, work))
+    task = asyncio.create_task(_run(job, work))
+    if lock:
+        _LIVE[lock] = task
+    else:
+        _LOOSE.add(task)
+        task.add_done_callback(_LOOSE.discard)
     return job
 
 

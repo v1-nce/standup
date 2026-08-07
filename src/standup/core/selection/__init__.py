@@ -34,14 +34,17 @@ def choose(index: Index, scope: Scope, candidates: list[Candidate], *, request: 
 def edited(current: Selection, keep: list[str]) -> Selection:
     """The user's edit, applied literally. Nothing re-ranks, nothing is quietly restored."""
     known = {entry.candidate.id: entry for entry in [*current.chosen, *current.cut]}
-    unknown = [item for item in keep if item not in known]
+    # A repeated id is one item asked for twice, not two: naming it three times used to put the
+    # same file on three slides, which python-pptx then renders as three copies of one block.
+    wanted = dict.fromkeys(keep)
+    unknown = [item for item in wanted if item not in known]
     if unknown:
         raise NotFound(f"This selection has nothing called {unknown}")
 
     return current.model_copy(
         update={
-            "chosen": [known[item] for item in keep],
-            "cut": [entry for item, entry in known.items() if item not in keep],
+            "chosen": [known[item] for item in wanted],
+            "cut": [entry for item, entry in known.items() if item not in wanted],
         }
     )
 

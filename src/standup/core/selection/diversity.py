@@ -13,9 +13,8 @@ def _overlap(left: Candidate, right: Candidate) -> float:
     shared = set(left.commits) & set(right.commits)
     union = set(left.commits) | set(right.commits)
     together = len(shared) / len(union) if union else 0.0
-
-    here = PurePosixPath(left.id).parent.parts
-    there = PurePosixPath(right.id).parent.parts
+    here = PurePosixPath(left.id).parent.parts[1:]
+    there = PurePosixPath(right.id).parent.parts[1:]
     common = sum(1 for a, b in zip(here, there, strict=False) if a == b)
     nearby = common / max(len(here), len(there)) if here or there else 1.0
 

@@ -8,6 +8,7 @@ from standup.core.models.api import (
 from standup.core.models.artifacts import (
     Candidate,
     Commit,
+    Facts,
     FileFacts,
     Index,
     Scope,
@@ -20,12 +21,13 @@ from standup.core.models.artifacts import (
 from standup.core.models.project import (
     ChatMessage,
     ChatSend,
+    ContextAdd,
     Project,
     ProjectCreate,
     ProjectPaths,
     ProjectRename,
-    Source,
-    SourceKind,
+    Resource,
+    ResourceKind,
 )
 
 __all__ = [
@@ -33,7 +35,9 @@ __all__ = [
     "ChatMessage",
     "ChatSend",
     "Commit",
+    "ContextAdd",
     "Deck",
+    "Facts",
     "FileFacts",
     "Health",
     "Index",
@@ -43,13 +47,13 @@ __all__ = [
     "ProjectCreate",
     "ProjectPaths",
     "ProjectRename",
+    "Resource",
+    "ResourceKind",
     "Scope",
     "Scored",
     "Selection",
     "SelectionEdit",
     "Slide",
     "SlidePlan",
-    "Source",
-    "SourceKind",
     "Symbol",
 ]

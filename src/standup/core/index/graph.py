@@ -92,7 +92,7 @@ def anchors(paths: list[str]) -> list[str]:
         for depth, name in enumerate(directories):
             if name in _SOURCE_ROOTS:
                 found.add("/".join(directories[: depth + 1]) + "/")
-    return sorted(found, key=len, reverse=True)
+    return sorted(found, key=lambda anchor: (-len(anchor), anchor))
 
 
 def _nearest(importer: str, candidates: list[str]) -> list[str]:
