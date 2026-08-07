@@ -12,11 +12,12 @@ The user registers resources once — a codebase **and its git history**, docume
 
 ## What exists
 
-Verified 2026-08-05. **Backend: 140 tests. Frontend: 15.** Both in CI.
+Verified 2026-08-07. **Backend: 167 tests. Frontend: 27.** Both in CI.
 
 - **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (deterministic scope validation + candidates), selection (five signals, weights, MMR), present (groundedness validation, `.pptx`), the agent loop and its three commands, the job runner, the project store and chat log, the provider seam over Anthropic and Gemini, and the HTTP API over all of it.
 - **Wired end to end** — the GUI reads and writes real projects, sends a message, polls the job, and renders the deck the agent wrote. Types are generated from the backend's OpenAPI schema.
-- **Not built** — diagrams, SSE, prompt caching, a project's context database (the `+` is disabled), every benchmark, packaging. **A project is created from a name alone and starts with nothing attached**; `ProjectStore.create` still takes an optional `location`, which is the seam the `+` will use, and until then nothing over HTTP can attach a codebase. Briefs were a designed stage and the empty seam holding their place is now **deleted**; they return only if the quality benchmark earns them — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6.
+- **Context is what a project may draw on** — created from a name alone, then given **many folders and many documents** through the `+`. **A folder is named by its path; a document is handed over whole** — a page is never told where a dropped file lives, and that asymmetry is the whole design rather than something to hide. So: a path field with an `Add`, and a drop zone with an `Add file` over `<input type="file">`. Two attempts to make it one control were built and both deleted — an in-app file browser, then the machine's own dialog through `POST /pick` (`ctypes` over `GetOpenFileNameW`, with the filename box carrying a sentinel so one dialog could return a folder). Both worked and both read as vibed. **Nothing platform-specific survives**; the browser does the only part it is allowed to do. A folder is referenced where it lives; a document is copied in, whether picked or dropped. Attaching never returns 409 — indexing queues per project instead of refusing, which is what "one job per project" got wrong. Each resource is indexed and cached on its own; `index.merged` prefixes every path with its resource id, so `repo-a/src/main.py` cannot collide with `repo-b/src/main.py`, and then ranks the whole set **once**. Rank is relative: computed per resource and merged, a lone attached file would score ≈1.0 and flatten a 3000-file repository to ≈0. A document's extracted text is its only evidence, so it travels on `FileFacts.excerpt` and reaches both `evidence` and `_affinity`.
+- **Not built** — diagrams, SSE, prompt caching, every benchmark, packaging. Briefs were a designed stage and the empty seam holding their place is now **deleted**; they return only if the quality benchmark earns them — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6.
 - **Never measured** — every tuning constant. `LAMBDA = 0.7`, the whole `WEIGHTS` table, `MAX_COMMITS`, `MIN_NAME_LENGTH`, and now `MAX_ROUNDS = 5` are guesses standing in until the quality benchmark exists.
 
 ## Stack
@@ -54,6 +55,8 @@ decisions on record, not claims about the code.
 | PageRank (hand-written, ~25 lines) | Over the import graph. **NetworkX was dropped**: it pulls numpy and scipy (~100MB) to run power iteration we can write in a page, and memory is a hard target. Revisit only if a benchmark measures it slow |
 | MMR (hand-written, ~15 lines) | Diversity. Relevance alone yields eight slides on one subsystem |
 | `git` via subprocess | **The record of what actually happened.** Commit history, diffs, authorship, branch and merge state, commit messages, and the tree. Churn is one signal it yields, not the reason it is there |
+| `pypdf` | Text out of an attached PDF. **Not PyMuPDF**: 8–12× faster and AGPL-3.0 — Standup is distributed with a paid subscription beside it, so that licence reaches the whole product. Extraction is once per document and cached, so the speed buys nothing. `pypdfium2` (permissive, faster) is the upgrade path if quality measures short, at the cost of a compiled binary per wheel |
+| `python-multipart` | FastAPI cannot accept an upload without it, and a browser cannot send a dropped file any other way |
 
 **Model**
 

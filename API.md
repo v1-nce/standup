@@ -1,6 +1,6 @@
 # API
 
-17 endpoints — 14 built, 3 later. Base URL `http://127.0.0.1:8000`. Every error body is
+18 endpoints, all built. Base URL `http://127.0.0.1:8000`. Every error body is
 `{"detail": str}`; a malformed request body is `422`.
 
 A project holds one deck, one conversation, and the resources it was given. **The only thing that
@@ -10,9 +10,8 @@ Reading, editing and rendering a deck are deterministic.
 Sending a message returns `202` with a `Job`; the client polls `GET /jobs/{job_id}` until the
 state leaves `running`, then re-reads the chat and the deck. Only failures visible before the
 work starts — no project, no key, already busy — come back on the original request; everything
-else surfaces as a failed job.
-
-Endpoints marked **later** are reserved and not built.
+else surfaces as a failed job. Attaching context works the same way: the resource is kept before
+the job starts, so it is listed immediately and the indexing is reported separately.
 
 ---
 
@@ -62,18 +61,14 @@ Endpoints marked **later** are reserved and not built.
 ## 5. Create project
 
     Description: Creates an empty project: a name, one empty deck, and nothing to talk about
-                 yet. Resources are attached afterwards — endpoint 16.
+                 yet. Resources are attached afterwards — endpoints 16 and 17.
     Endpoint:    POST /projects
     Input:            {"name": str}
     Outputs:     201  Project {
                         "id":         str,
                         "name":       str,
                         "created_at": datetime,
-                        "source":     null | {
-                          "kind":     "local" | "remote",
-                          "location": str,
-                          "has_git":  bool
-                        }
+                        "resources":  [Resource]
                       }
                  400  the name is blank
 
@@ -233,39 +228,66 @@ Endpoints marked **later** are reserved and not built.
 
 ---
 
-## 15. List context — **later**
+## 15. List context
 
-    Description: Lists the resources a project draws on.
+    Description: Lists what a project draws on, in the order it was attached.
     Endpoint:    GET /projects/{project_id}/context
     Input:       none
     Outputs:     200  [Resource {
                         "id":       str,
-                        "kind":     "codebase" | "document",
+                        "kind":     "folder" | "file",
+                        "name":     str,
                         "location": str,
                         "added_at": datetime
                       }]
                  404  no such project
 
+    Note: `id` prefixes every path derived from that resource, so `standup-a1b2/src/api.py`
+          and another repository's `src/api.py` can never be confused.
+
 ---
 
-## 16. Add context — **later**
+## 16. Attach by path
 
-    Description: Registers one more resource — a repository path, a PDF, a document — and
-                 indexes it.
+    Description: Attaches folders and files by path. A folder is referenced where it lives; a
+                 file is copied in, exactly as an uploaded one is, so the two ways of adding a
+                 document behave the same.
     Endpoint:    POST /projects/{project_id}/context
-    Input:            {
-                        "location": str
-                      }
-    Outputs:     202  Job
-                 400  unreadable, unsupported, or already registered
+    Input:            {"locations": [str]}
+    Outputs:     202  Job — the indexing, which the resource does not wait for
+                 400  not a directory, or inside a folder already attached
                  404  no such project
 
+    Note: never 409. Indexing queues behind whatever is already indexing this project, so a
+          second folder can be attached while the first is still being read.
+
 ---
 
-## 17. Remove context — **later**
+## 17. Upload documents
 
-    Description: Unregisters a resource and drops everything derived from it.
+    Description: Copies one or more documents into the project and indexes them. A browser
+                 never reveals a file's path, so its bytes are what arrives.
+    Endpoint:    POST /projects/{project_id}/context/files
+    Input:       multipart/form-data, one or more parts named `files`
+    Outputs:     202  Job
+                 400  a kind of file Standup cannot read, no text in it, or the identical file
+                      is attached already
+                 404  no such project
+
+    Note: two documents may share a name — every repository has a README.md. Only re-uploading
+          the same bytes under the same name is refused.
+
+---
+
+## 18. Remove context
+
+    Description: Detaches a resource and drops its copy and everything derived from it.
     Endpoint:    DELETE /projects/{project_id}/context/{resource_id}
     Input:       none
     Outputs:     204  empty
                  404  no such project or resource
+
+    Note: derived means the index, the uploaded copy, and the deck — every chosen item, cut item
+          and written slide whose id begins with this resource, plus any rendered .pptx. Left
+          behind, those ids reach the agent as evidence and read as context that still exists.
+          The chat log is not touched: it is what was said, not what is attached.

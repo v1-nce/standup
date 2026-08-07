@@ -46,9 +46,8 @@ Three things make it different from asking a chatbot:
   it. Indexing, artifacts, decks and history are all local files. The only thing that ever
   leaves is the content of a bounded model call, to a provider you chose.
 
-**Status.** Chat, deck and GUI work end to end and produce a real `.pptx` — 140 backend tests, 15
-in the GUI. Adding context beyond the codebase (the `+` button), diagrams, packaging and
-benchmarks are not built.
+**Status.** Chat, deck and GUI work end to end and produce a real `.pptx` — 167 backend tests, 27
+in the GUI. Diagrams, packaging and benchmarks are not built.
 
 ## 3. Folder Structure
 
@@ -84,7 +83,7 @@ standup/
 │   ├── __tests__/              vitest
 │   └── out/                    Next's export, copied into web/. GENERATED
 │
-├── tests/                      pytest — 140 tests
+├── tests/                      pytest — 167 tests
 ├── benchmarks/                 measurement, one concern per target. Not built
 └── docs/                       SPECS · ARCHITECTURE · RESEARCH · UIUX
 ```
@@ -140,9 +139,14 @@ Everything happens in the browser window that just opened.
 **Create your project.** Click *+ New project* in the left rail and name it. That is all a
 project needs: a name, and the one deck it holds. Rename or delete it there later.
 
-**Attach what it should talk about.** The `+` above the chat is where a repository, a PDF or a
-document gets registered against the project. **This is not built yet** — until it is, a project
-created in the GUI has nothing to draw on, and the agent will say so rather than invent a deck.
+**Attach what it should talk about.** The `+` above the chat opens the context window. Paste a
+folder's path and press **Add**; drop documents on the panel or pick them with **Add file**. Attach
+as many as you like; each is indexed on its own and they are ranked together. Remove one and
+everything derived from it goes with it.
+
+Two ways in, because a browser is never told where a dropped file lives — a folder is named by its
+path and read where it lives, a document is handed over whole and copied into the project, so
+moving the original later never breaks a deck.
 
 **Ask for a deck.** Type what you need in the chat, in plain English — *"standup tomorrow, three
 slides on what changed this week"*. The first request also indexes the resources, so give it a few
@@ -160,12 +164,12 @@ PowerPoint or Keynote and edit it like any other deck.
 ### Working on Standup itself
 
 ```powershell
-python -m pytest          # 140 tests
+python -m pytest          # 167 tests
 ruff check .
 
 cd ui
 npm run dev               # http://localhost:3000, hot reload; expects the API on :8000
-npm test                  # 15 tests
+npm test                  # 27 tests
 ```
 
 In development the GUI runs on `:3000` and the API on `:8000` — two ports. A real install serves
