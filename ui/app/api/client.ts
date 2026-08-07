@@ -2,6 +2,7 @@ import type { components } from "@/app/api/schema";
 
 type Schemas = components["schemas"];
 export type Project = Schemas["Project"];
+export type Resource = Schemas["Resource"];
 export type ChatMessage = Schemas["ChatMessage"];
 export type Deck = Schemas["Deck"];
 export type Job = Schemas["Job"];
@@ -18,9 +19,10 @@ export class ApiError extends Error {
 }
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
+  const json = init?.body !== undefined && !(init.body instanceof FormData);
   const response = await fetch(`${BASE}${path}`, {
     ...init,
-    headers: init?.body ? { "content-type": "application/json" } : undefined,
+    headers: json ? { "content-type": "application/json" } : undefined,
   });
   if (response.ok) return response;
 
@@ -48,6 +50,28 @@ export const api = {
   deleteProject: (id: string): Promise<void> =>
     request(project(id), { method: "DELETE" }).then(() => undefined),
 
+  listContext: (id: string): Promise<Resource[]> =>
+    request(`${project(id)}/context`).then((r) => r.json()),
+
+  addPaths: (id: string, locations: string[]): Promise<Job> =>
+    request(`${project(id)}/context`, {
+      method: "POST",
+      body: JSON.stringify({ locations }),
+    }).then((r) => r.json()),
+
+  addFiles: (id: string, files: FileList | File[]): Promise<Job> => {
+    const form = new FormData();
+    for (const file of files) form.append("files", file);
+    return request(`${project(id)}/context/files`, { method: "POST", body: form }).then((r) =>
+      r.json(),
+    );
+  },
+
+  removeContext: (id: string, resourceId: string): Promise<void> =>
+    request(`${project(id)}/context/${encodeURIComponent(resourceId)}`, {
+      method: "DELETE",
+    }).then(() => undefined),
+
   readChat: (id: string): Promise<ChatMessage[]> =>
     request(`${project(id)}/chat`).then((r) => r.json()),
 
@@ -56,13 +80,11 @@ export const api = {
       (r) => r.json(),
     ),
 
-  readJob: (jobId: string): Promise<Job> =>
-    request(`/jobs/${encodeURIComponent(jobId)}`).then((r) => r.json()),
-
-  awaitJob: async (jobId: string): Promise<Job> => {
+  awaitJob: async (jobId: string, signal?: AbortSignal): Promise<Job> => {
+    const where = `/jobs/${encodeURIComponent(jobId)}`;
     for (;;) {
-      const job = await api.readJob(jobId);
-      if (job.state !== "running") return job;
+      const job: Job = await request(where).then((r) => r.json());
+      if (job.state !== "running" || signal?.aborted) return job;
       await new Promise((wake) => setTimeout(wake, POLL_MS));
     }
   },
@@ -74,6 +96,4 @@ export const api = {
         if (failure instanceof ApiError && failure.status === 404) return null;
         throw failure;
       }),
-
-  deckFileUrl: (id: string): string => `${BASE}${project(id)}/deck/file`,
 };

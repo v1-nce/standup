@@ -21,6 +21,7 @@ export function useSlideNavigation(count: number) {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target;
       if (target instanceof Element && target.closest("input, textarea")) return;
+      if (document.querySelector("dialog[open]")) return;
       if (event.key === "ArrowLeft") step(-1);
       if (event.key === "ArrowRight") step(1);
     };

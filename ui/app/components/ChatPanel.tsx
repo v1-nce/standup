@@ -8,9 +8,11 @@ const WHO = { user: "you", assistant: "standup" } as const;
 
 export function ChatPanel({
   messages,
+  onAddContext,
   pending,
 }: {
   messages: ChatMessage[];
+  onAddContext?: () => void;
   pending: boolean;
 }) {
   const transcript = useRef<HTMLDivElement>(null);
@@ -23,9 +25,10 @@ export function ChatPanel({
   return (
     <div className="relative flex min-h-48 flex-1 flex-col border border-rule">
       <IconButton
-        className="absolute top-2 right-3 z-10 h-8 w-8 bg-paper text-muted"
-        disabled
-        label="Add context — not built yet"
+        className="absolute top-2 right-3 z-10 h-8 w-8 bg-paper text-muted hover:text-ink"
+        disabled={!onAddContext}
+        label="Add context"
+        onClick={onAddContext}
       >
         {PlusPath}
       </IconButton>

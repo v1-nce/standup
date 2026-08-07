@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChatPanel } from "@/app/components/ChatPanel";
 import { Composer } from "@/app/components/Composer";
+import { ContextModal } from "@/app/components/ContextModal";
 import { IconButton, MenuPath } from "@/app/components/IconButton";
 import { Rail } from "@/app/components/Rail";
 import { Slides } from "@/app/components/Slides";
@@ -11,6 +12,7 @@ import { useProjects } from "@/app/hooks/useProjects";
 
 export default function Home() {
   const [railOpen, setRailOpen] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
 
   const projects = useProjects();
@@ -49,7 +51,11 @@ export default function Home() {
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
           <section className="flex min-h-0 flex-col gap-3 lg:w-96 lg:shrink-0">
-            <ChatPanel messages={messages} pending={pending} />
+            <ChatPanel
+              messages={messages}
+              onAddContext={selectedId ? () => setContextOpen(true) : undefined}
+              pending={pending}
+            />
             {error && <p className="shrink-0 font-mono text-xs text-accent">{error}</p>}
             <Composer disabled={!selectedId || pending} onSend={send} />
           </section>
@@ -57,6 +63,10 @@ export default function Home() {
           <Slides deck={deck} />
         </div>
       </div>
+
+      {contextOpen && selectedId && (
+        <ContextModal onClose={() => setContextOpen(false)} projectId={selectedId} />
+      )}
     </div>
   );
 }

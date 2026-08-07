@@ -42,3 +42,4 @@ export const PlusPath = <path d="M10 4v12M4 10h12" />;
 export const UpPath = <path d="M10 15V5M5 10l5-5 5 5" />;
 export const PencilPath = <path d="M13 4l3 3-9 9H4v-3z" />;
 export const TrashPath = <path d="M4 6h12M7.5 6V4h5v2M6 6l.8 10h6.4L15 6M8.5 9v4M11.5 9v4" />;
+export const ClosePath = <path d="M5 5l10 10M15 5L5 15" />;

@@ -110,6 +110,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Context */
+        get: operations["list_context_projects__project_id__context_get"];
+        put?: never;
+        /**
+         * Add Paths
+         * @description Folders and files by path, all of them or none — a refusal partway through would leave
+         *     some attached and an error that says nothing about which.
+         */
+        post: operations["add_paths_projects__project_id__context_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/context/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Files
+         * @description Kept before the job starts, so the list shows them while the indexing runs.
+         */
+        post: operations["add_files_projects__project_id__context_files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/context/{resource_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Context
+         * @description The resource, its copy, its index, and the deck it produced. Removed means removed.
+         */
+        delete: operations["remove_context_projects__project_id__context__resource_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/deck": {
         parameters: {
             query?: never;
@@ -182,6 +244,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Body_add_files_projects__project_id__context_files_post */
+        Body_add_files_projects__project_id__context_files_post: {
+            /** Files */
+            files: string[];
+        };
         /** Candidate */
         Candidate: {
             /** Id */
@@ -221,6 +288,14 @@ export interface components {
         ChatSend: {
             /** Content */
             content: string;
+        };
+        /**
+         * ContextAdd
+         * @description Paths on this machine — folders, files, or a mix of both.
+         */
+        ContextAdd: {
+            /** Locations */
+            locations: string[];
         };
         /**
          * Deck
@@ -275,7 +350,7 @@ export interface components {
         };
         /**
          * Project
-         * @description `source` is what the project was given to talk about. None until something is attached.
+         * @description `resources` is what the project may talk about. Empty until something is attached.
          */
         Project: {
             /** Id */
@@ -287,7 +362,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
-            source?: components["schemas"]["Source"] | null;
+            /**
+             * Resources
+             * @default []
+             */
+            resources: components["schemas"]["Resource"][];
         };
         /** ProjectCreate */
         ProjectCreate: {
@@ -299,6 +378,29 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * Resource
+         * @description One thing a project may draw on. `id` prefixes every path derived from it.
+         */
+        Resource: {
+            /** Id */
+            id: string;
+            kind: components["schemas"]["ResourceKind"];
+            /** Name */
+            name: string;
+            /** Location */
+            location: string;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+        };
+        /**
+         * ResourceKind
+         * @enum {string}
+         */
+        ResourceKind: "folder" | "file";
         /**
          * Scope
          * @description What the request puts in play — the one model output that precedes any derived work.
@@ -375,19 +477,6 @@ export interface components {
              */
             bullets: string[];
         };
-        /** Source */
-        Source: {
-            kind: components["schemas"]["SourceKind"];
-            /** Location */
-            location: string;
-            /** Has Git */
-            has_git: boolean;
-        };
-        /**
-         * SourceKind
-         * @enum {string}
-         */
-        SourceKind: "local" | "remote";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -672,6 +761,137 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Job"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_context_projects__project_id__context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Resource"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_paths_projects__project_id__context_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContextAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_files_projects__project_id__context_files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_add_files_projects__project_id__context_files_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Job"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_context_projects__project_id__context__resource_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                resource_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
