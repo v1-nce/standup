@@ -54,3 +54,8 @@ test("a project with no deck says so instead of rendering an empty stage", () =>
   expect(screen.getByText("No deck yet")).toBeDefined();
   expect(screen.queryAllByRole("button", { name: /^Slide \d/ })).toHaveLength(0);
 });
+
+test("the section can shrink below its thumbnail strip, so the strip scrolls instead of the page", () => {
+  const { container } = render(<Slides deck={DECK} />);
+  expect(container.querySelector("section")?.className).toContain("min-w-0");
+});

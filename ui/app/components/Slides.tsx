@@ -13,7 +13,7 @@ export function Slides({ deck }: { deck: Deck | null }) {
   const showing = slides[active];
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col gap-3">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
       <div
         className="flex min-h-0 flex-1 items-center justify-center overscroll-contain border border-rule p-4"
         onWheel={onWheel}
