@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from contextlib import contextmanager
 from typing import Any, TypeVar
 
@@ -61,12 +62,7 @@ class LLMClient:
     async def text(
         self, prompt: str, *, system: str | None = None, max_tokens: int | None = None
     ) -> str:
-        async with self._semaphore:
-            with _translated():
-                response = await self._client.messages.create(
-                    **self._request(prompt, system, max_tokens)
-                )
-        return "".join(block.text for block in response.content if block.type == "text")
+        return await self._create(prompt, system, max_tokens)
 
     async def structured(
         self,
@@ -84,14 +80,42 @@ class LLMClient:
                 )
         return response.parsed_output
 
+    async def describe_image(
+        self, data: bytes, media_type: str, *, prompt: str, max_tokens: int | None = None
+    ) -> str:
+        blocks = [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": base64.standard_b64encode(data).decode("ascii"),
+                },
+            },
+            {"type": "text", "text": prompt},
+        ]
+        return await self._create(blocks, None, max_tokens)
+
     async def aclose(self) -> None:
         await self._client.close()
 
-    def _request(self, prompt: str, system: str | None, max_tokens: int | None) -> dict[str, Any]:
+    async def _create(
+        self, content: str | list[dict[str, Any]], system: str | None, max_tokens: int | None
+    ) -> str:
+        async with self._semaphore:
+            with _translated():
+                response = await self._client.messages.create(
+                    **self._request(content, system, max_tokens)
+                )
+        return "".join(block.text for block in response.content if block.type == "text")
+
+    def _request(
+        self, content: str | list[dict[str, Any]], system: str | None, max_tokens: int | None
+    ) -> dict[str, Any]:
         request: dict[str, Any] = {
             "model": self._model,
             "max_tokens": max_tokens or self._max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [{"role": "user", "content": content}],
         }
         if system:
             request["system"] = system

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from contextlib import suppress
 from typing import Any, TypeVar
@@ -103,18 +104,33 @@ class GeminiClient:
             except ValidationError as last:
                 raise Upstream(f"Gemini could not produce a {schema.__name__}: {last}") from last
 
+    async def describe_image(
+        self, data: bytes, media_type: str, *, prompt: str, max_tokens: int | None = None
+    ) -> str:
+        parts = [
+            {"inlineData": {"mimeType": media_type, "data": base64.standard_b64encode(data).decode("ascii")}},
+            {"text": prompt},
+        ]
+        return await self._generate(parts, None, max_tokens, as_json=False)
+
     async def aclose(self) -> None:
         await self._http.aclose()
 
     async def _generate(
-        self, prompt: str, system: str | None, max_tokens: int | None, *, as_json: bool
+        self,
+        prompt: str | list[dict[str, Any]],
+        system: str | None,
+        max_tokens: int | None,
+        *,
+        as_json: bool,
     ) -> str:
         config: dict[str, Any] = {"maxOutputTokens": max_tokens or self._max_tokens}
         if as_json:
             config["responseMimeType"] = "application/json"
 
+        parts = [{"text": prompt}] if isinstance(prompt, str) else prompt
         body: dict[str, Any] = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "contents": [{"role": "user", "parts": parts}],
             "generationConfig": config,
         }
         if system:

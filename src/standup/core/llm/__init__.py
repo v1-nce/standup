@@ -1,11 +1,12 @@
 """The only path to a model. Nothing outside this package knows which provider is active."""
 
+import asyncio
 from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
 
 from standup.config import settings
-from standup.core.llm.client import LLMClient
+from standup.core.llm.anthropic_client import LLMClient
 from standup.core.llm.gemini_client import GeminiClient
 from standup.errors import NotConfigured
 
@@ -30,6 +31,10 @@ class ModelClient(Protocol):
         max_tokens: int | None = None,
     ) -> T: ...
 
+    async def describe_image(
+        self, data: bytes, media_type: str, *, prompt: str, max_tokens: int | None = None
+    ) -> str: ...
+
     async def aclose(self) -> None: ...
 
 
@@ -50,11 +55,26 @@ def from_settings() -> ModelClient:
     return PROVIDERS[chosen].from_settings()
 
 
+def describe_image_sync(data: bytes, media_type: str, *, prompt: str) -> str:
+    """A bridge for callers that cannot await, like document indexing — the one place indexing
+    calls the model. Only safe off the event loop thread; indexing already runs on a worker one."""
+
+    async def _call() -> str:
+        client = from_settings()
+        try:
+            return await client.describe_image(data, media_type, prompt=prompt)
+        finally:
+            await client.aclose()
+
+    return asyncio.run(_call())
+
+
 __all__ = [
     "PROVIDERS",
     "GeminiClient",
     "LLMClient",
     "ModelClient",
     "active_provider",
+    "describe_image_sync",
     "from_settings",
 ]

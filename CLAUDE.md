@@ -12,7 +12,7 @@ The user registers resources once — a codebase **and its git history**, docume
 
 ## What exists
 
-Verified 2026-08-07. **Backend: 167 tests. Frontend: 27.** Both in CI.
+Verified 2026-08-08. **Backend: 183 tests. Frontend: 28.** Both in CI.
 
 - **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (deterministic scope validation + candidates), selection (five signals, weights, MMR), present (groundedness validation, `.pptx`), the agent loop and its three commands, the job runner, the project store and chat log, the provider seam over Anthropic and Gemini, and the HTTP API over all of it.
 - **Wired end to end** — the GUI reads and writes real projects, sends a message, polls the job, and renders the deck the agent wrote. Types are generated from the backend's OpenAPI schema.
@@ -56,6 +56,9 @@ decisions on record, not claims about the code.
 | MMR (hand-written, ~15 lines) | Diversity. Relevance alone yields eight slides on one subsystem |
 | `git` via subprocess | **The record of what actually happened.** Commit history, diffs, authorship, branch and merge state, commit messages, and the tree. Churn is one signal it yields, not the reason it is there |
 | `pypdf` | Text out of an attached PDF. **Not PyMuPDF**: 8–12× faster and AGPL-3.0 — Standup is distributed with a paid subscription beside it, so that licence reaches the whole product. Extraction is once per document and cached, so the speed buys nothing. `pypdfium2` (permissive, faster) is the upgrade path if quality measures short, at the cost of a compiled binary per wheel |
+| `openpyxl` | Cell text out of an attached `.xlsx`. Pure Python, MIT, no compiled binary — nothing read spreadsheets before this, so nothing is replaced |
+| `python-docx` | Paragraph and table text out of an attached `.docx`. Same shape of choice as `openpyxl`: pure Python, MIT, first of its kind here |
+| `python-pptx` | Also reads an attached `.pptx`'s text frames and tables, not only the deck it renders below — one dependency, two directions |
 | `python-multipart` | FastAPI cannot accept an upload without it, and a browser cannot send a dropped file any other way |
 
 **Model**
@@ -64,6 +67,7 @@ decisions on record, not claims about the code.
 |---|---|
 | Anthropic SDK, `claude-opus-5` | `messages.parse()` + Pydantic gives schema-bound output with SDK-level retry |
 | Gemini via AI Studio REST | A **free stand-in for development**, behind the same interface. `gemini-flash-lite-latest` — the thinking models spend their whole budget before answering. Weaker at following the scope prompt than Opus; don't tune anything against it |
+| Vision, both providers | An attached image has no text to extract, so `read()` sends it as an image content block and caches the reply by content hash. **The one exception to "indexing never touches the model"** — everything else in the index is derived for free; an image's evidence costs one call, made once, at attach time |
 | Prompt caching | Stable repo prefix first, volatile content last (512-token minimum on Opus 5). **Not built** |
 | Batch API | **Benchmarks only.** 50% cheaper, hour-scale latency — fatal for interactive use. **Not built** |
 

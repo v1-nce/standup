@@ -16,6 +16,8 @@ dependencies = [
     "tree-sitter-language-pack==1.14.0",
     "python-pptx>=1.0",
     "pypdf>=5.1",
+    "openpyxl>=3.1",
+    "python-docx>=1.1",
     "python-multipart>=0.0.20",
 ]
 
