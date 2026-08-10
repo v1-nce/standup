@@ -55,6 +55,15 @@ test("a project with no deck says so instead of rendering an empty stage", () =>
   expect(screen.queryAllByRole("button", { name: /^Slide \d/ })).toHaveLength(0);
 });
 
+test("scrolling over the thumbnail strip moves between slides too, not only over the stage", () => {
+  render(<Slides deck={DECK} />);
+  const strip = screen.getByRole("button", { name: "Slide 1: First" }).parentElement;
+  if (!strip) throw new Error("strip not found");
+
+  fireEvent.wheel(strip, { deltaY: 150 });
+  expect(shown()).toBe("Second");
+});
+
 test("the section can shrink below its thumbnail strip, so the strip scrolls instead of the page", () => {
   const { container } = render(<Slides deck={DECK} />);
   expect(container.querySelector("section")?.className).toContain("min-w-0");

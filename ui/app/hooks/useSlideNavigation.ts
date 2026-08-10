@@ -42,9 +42,11 @@ export function useSlideNavigation(count: number) {
 
   useEffect(() => {
     const list = strip.current;
-    if (!list?.contains(document.activeElement)) return;
+    if (!list) return;
     const thumb = list.children[active];
-    if (thumb instanceof HTMLElement) thumb.focus();
+    if (!(thumb instanceof HTMLElement)) return;
+    if (list.contains(document.activeElement)) thumb.focus();
+    else thumb.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, [active]);
 
   return { active, setActive, onWheel, strip };

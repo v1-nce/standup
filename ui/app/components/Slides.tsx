@@ -13,11 +13,8 @@ export function Slides({ deck }: { deck: Deck | null }) {
   const showing = slides[active];
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-      <div
-        className="flex min-h-0 flex-1 items-center justify-center overscroll-contain border border-rule p-4"
-        onWheel={onWheel}
-      >
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3" onWheel={onWheel}>
+      <div className="flex min-h-0 flex-1 items-center justify-center overscroll-contain border border-rule p-4">
         <div key={showing?.candidate_id ?? "empty"} className="rise w-full max-w-3xl">
           <SlideFace
             bullets={showing?.bullets ?? []}
