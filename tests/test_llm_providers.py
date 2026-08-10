@@ -1,3 +1,6 @@
+import base64
+import json
+
 import httpx
 import pytest
 from pydantic import BaseModel
@@ -69,10 +72,28 @@ def test_an_unknown_provider_is_refused_by_name(unconfigured, monkeypatch):
         llm.from_settings()
 
 
+def test_describe_image_sync_bridges_to_the_async_client_and_closes_it(monkeypatch):
+    closed = []
+
+    class Fake:
+        async def describe_image(self, data, media_type, *, prompt, max_tokens=None):
+            return f"described {media_type}: {prompt}"
+
+        async def aclose(self):
+            closed.append(True)
+
+    monkeypatch.setattr(llm, "from_settings", lambda: Fake())
+
+    result = llm.describe_image_sync(b"bytes", "image/png", prompt="describe it")
+
+    assert result == "described image/png: describe it"
+    assert closed == [True]
+
+
 def test_every_provider_answers_the_same_contract():
     for kind in llm.PROVIDERS.values():
         assert callable(kind.configured)
-        for method in ("text", "structured", "aclose"):
+        for method in ("text", "structured", "describe_image", "aclose"):
             assert callable(getattr(kind, method))
 
 
@@ -123,6 +144,26 @@ async def test_a_reply_that_stays_wrong_fails_rather_than_guessing():
 
     with pytest.raises(Upstream, match="could not produce a Shape"):
         await gemini(handler).structured("go", Shape)
+
+
+async def test_describe_image_sends_inline_data_alongside_the_prompt():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.read())
+        return spoke("A red square.")
+
+    result = await gemini(handler).describe_image(b"\x89PNG...", "image/png", prompt="What is this?")
+
+    assert result == "A red square."
+    parts = seen["body"]["contents"][0]["parts"]
+    assert parts[0] == {
+        "inlineData": {
+            "mimeType": "image/png",
+            "data": base64.standard_b64encode(b"\x89PNG...").decode("ascii"),
+        }
+    }
+    assert parts[1] == {"text": "What is this?"}
 
 
 async def test_an_http_failure_becomes_one_of_our_errors():

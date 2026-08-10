@@ -3,12 +3,13 @@ import subprocess
 import pytest
 
 from standup.core import index
+from standup.core.index import docs
 from standup.core.index.code import module_path, parse, walk
 from standup.core.index.docs import emphasis, prose, read, readable
 from standup.core.index.graph import aliases, edges, rank
 from standup.core.index.history import commits
-from standup.errors import InvalidInput
-from tests.conftest import pdf_saying
+from standup.errors import InvalidInput, NotConfigured
+from tests.conftest import TINY_PNG, docx_saying, pdf_saying, pptx_saying, xlsx_saying
 
 
 @pytest.fixture
@@ -251,10 +252,14 @@ def test_a_file_with_no_readable_text_is_refused_rather_than_attached_empty(tmp_
         index.build(blank)
 
 
-def test_readable_covers_documents_and_source_but_not_a_spreadsheet():
+def test_readable_covers_documents_source_and_office_formats_but_not_an_ebook():
     assert readable("spec.pdf")
     assert readable("notes.md")
     assert readable("main.py")
+    assert readable("sheet.xlsx")
+    assert readable("deck.pptx")
+    assert readable("brief.docx")
+    assert readable("photo.png")
     assert not readable("book.epub")
 
 
@@ -262,6 +267,81 @@ def test_a_pdf_is_read_as_text(tmp_path):
     document = tmp_path / "spec.pdf"
     document.write_bytes(pdf_saying("Standup selects what matters"))
     assert "Standup selects what matters" in read(document)
+
+
+def test_a_spreadsheet_is_read_cell_by_cell(tmp_path):
+    document = tmp_path / "sheet.xlsx"
+    document.write_bytes(xlsx_saying("Q3 revenue is up"))
+    assert "Q3 revenue is up" in read(document)
+
+
+def test_a_slide_deck_is_read_text_frame_by_text_frame(tmp_path):
+    document = tmp_path / "deck.pptx"
+    document.write_bytes(pptx_saying("The migration finished Tuesday"))
+    assert "The migration finished Tuesday" in read(document)
+
+
+def test_a_word_document_is_read_paragraph_by_paragraph(tmp_path):
+    document = tmp_path / "brief.docx"
+    document.write_bytes(docx_saying("Rollout is blocked on the auth change"))
+    assert "Rollout is blocked on the auth change" in read(document)
+
+
+@pytest.mark.parametrize("suffix", [".xlsx", ".pptx", ".docx"])
+def test_a_corrupt_office_document_is_refused_rather_than_crashing(tmp_path, suffix):
+    document = tmp_path / f"broken{suffix}"
+    document.write_bytes(b"not a real office document")
+    with pytest.raises(InvalidInput, match="could not be read"):
+        read(document)
+
+
+def test_an_image_is_described_by_the_configured_model(tmp_path, monkeypatch):
+    monkeypatch.setattr(docs, "_DESCRIBED", {})
+    seen = {}
+
+    def fake(data, media_type, *, prompt):
+        seen["data"], seen["media_type"], seen["prompt"] = data, media_type, prompt
+        return "A dashboard showing 3 failing tests."
+
+    monkeypatch.setattr(docs, "describe_image_sync", fake)
+    photo = tmp_path / "photo.png"
+    photo.write_bytes(TINY_PNG)
+
+    assert read(photo) == "A dashboard showing 3 failing tests."
+    assert seen["data"] == TINY_PNG
+    assert seen["media_type"] == "image/png"
+
+
+def test_describing_the_same_image_twice_calls_the_model_once(tmp_path, monkeypatch):
+    """Attach-time validation and index-time extraction both read() the file the model call
+    is the one expensive step, and it must not be billed twice for one attach."""
+    monkeypatch.setattr(docs, "_DESCRIBED", {})
+    calls = []
+
+    def fake(data, media_type, *, prompt):
+        calls.append(data)
+        return "A whiteboard sketch of the auth flow."
+
+    monkeypatch.setattr(docs, "describe_image_sync", fake)
+    photo = tmp_path / "photo.png"
+    photo.write_bytes(TINY_PNG)
+
+    assert read(photo) == read(photo)
+    assert len(calls) == 1
+
+
+def test_an_image_with_no_model_configured_fails_honestly(tmp_path, monkeypatch):
+    monkeypatch.setattr(docs, "_DESCRIBED", {})
+
+    def unconfigured(data, media_type, *, prompt):
+        raise NotConfigured("No model key. Set ANTHROPIC_API_KEY or GEMINI_API_KEY in .env")
+
+    monkeypatch.setattr(docs, "describe_image_sync", unconfigured)
+    photo = tmp_path / "photo.png"
+    photo.write_bytes(TINY_PNG)
+
+    with pytest.raises(NotConfigured, match="ANTHROPIC_API_KEY"):
+        read(photo)
 
 
 def test_ensure_reuses_the_stored_facts_until_the_resource_changes(repo, tmp_path):

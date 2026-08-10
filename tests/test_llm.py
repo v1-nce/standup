@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import types
 
 import anthropic
@@ -6,7 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 from standup.core.llm import LLMClient
-from standup.core.llm.client import _translated
+from standup.core.llm.anthropic_client import _translated
 from standup.errors import NotConfigured, Upstream
 
 
@@ -88,6 +89,23 @@ async def test_structured_returns_parsed_output():
     result = await client.structured("hi", Out)
     assert result.value == "x"
     assert fake.calls[0]["output_format"] is Out
+
+
+async def test_describe_image_sends_the_bytes_as_a_base64_block():
+    client = make_client()
+    fake = attach(client, types.SimpleNamespace(content=[text_block("A red square.")]))
+
+    result = await client.describe_image(b"\x89PNG...", "image/png", prompt="What is this?")
+
+    assert result == "A red square."
+    content = fake.calls[0]["messages"][0]["content"]
+    assert content[0]["type"] == "image"
+    assert content[0]["source"] == {
+        "type": "base64",
+        "media_type": "image/png",
+        "data": base64.standard_b64encode(b"\x89PNG...").decode("ascii"),
+    }
+    assert content[1] == {"type": "text", "text": "What is this?"}
 
 
 async def test_concurrency_is_bounded():

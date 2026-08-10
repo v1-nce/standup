@@ -1,8 +1,13 @@
 """Fixtures shared by every test that needs a real project on disk."""
 
+import base64
 import subprocess
+from io import BytesIO
 
 import pytest
+from docx import Document
+from openpyxl import Workbook
+from pptx import Presentation
 
 from standup.core import pipeline
 from standup.core.projects import ProjectStore
@@ -53,6 +58,38 @@ def pdf_saying(words: str) -> bytes:
         out += b"%010d 00000 n \n" % offset
     out += b"trailer<</Size %d/Root 1 0 R>>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, start)
     return bytes(out)
+
+
+def xlsx_saying(words: str) -> bytes:
+    book = Workbook()
+    book.active.append([words])
+    buffer = BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def pptx_saying(words: str) -> bytes:
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[6])
+    box = slide.shapes.add_textbox(0, 0, 1000, 1000)
+    box.text_frame.text = words
+    buffer = BytesIO()
+    deck.save(buffer)
+    return buffer.getvalue()
+
+
+def docx_saying(words: str) -> bytes:
+    document = Document()
+    document.add_paragraph(words)
+    buffer = BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+# The smallest possible PNG: a single red pixel, valid enough for any real decoder.
+TINY_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 @pytest.fixture

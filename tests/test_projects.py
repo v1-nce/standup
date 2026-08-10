@@ -63,7 +63,7 @@ def test_attaching_a_file_keeps_a_copy_inside_the_project(store, codebase):
 def test_a_file_standup_cannot_read_is_refused(store):
     project = store.create("My App")
     with pytest.raises(InvalidInput, match="cannot read"):
-        store.attach_file(project.id, "sheet.xlsx", b"a spreadsheet")
+        store.attach_file(project.id, "book.epub", b"an ebook")
 
 
 def test_a_folder_inside_an_attached_folder_is_refused(store, codebase):
