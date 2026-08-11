@@ -27,7 +27,6 @@ def ordered(candidates: list[Candidate], relevance: dict[str, float], limit: int
     chosen: list[Candidate] = []
 
     while remaining and len(chosen) < limit:
-        # max() keeps the first of equal scores, and `remaining` is already in a settled order.
         best = max(
             remaining,
             key=lambda c: LAMBDA * relevance[c.id]

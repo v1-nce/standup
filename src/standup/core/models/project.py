@@ -12,8 +12,6 @@ class ResourceKind(str, Enum):
 
 
 class Resource(BaseModel):
-    """One thing a project may draw on. `id` prefixes every path derived from it."""
-
     id: str
     kind: ResourceKind
     name: str
@@ -22,8 +20,6 @@ class Resource(BaseModel):
 
 
 class Project(BaseModel):
-    """`resources` is what the project may talk about. Empty until something is attached."""
-
     id: str
     name: str
     created_at: datetime

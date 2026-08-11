@@ -23,7 +23,7 @@ def _translated():
 
 
 class LLMClient:
-    """The backend's only path to a model."""
+    """The Anthropic half of the model seam."""
 
     def __init__(
         self,

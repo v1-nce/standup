@@ -37,8 +37,6 @@ class ProjectStore:
 
     def __init__(self, root: Path) -> None:
         self._root = root
-        # project.json is read-modify-written from several threads at once, and a reader can
-        # otherwise catch it mid-truncation. Re-entrant: every mutator reads before it writes.
         self._guard = threading.RLock()
 
     def paths(self, project_id: str) -> ProjectPaths:

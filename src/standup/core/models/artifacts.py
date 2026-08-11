@@ -12,8 +12,6 @@ class Symbol(BaseModel):
 
 
 class FileFacts(BaseModel):
-    """`excerpt` is filled only for a file attached on its own, whose text is its whole evidence."""
-
     path: str
     content_hash: str
     symbols: list[Symbol] = []
@@ -22,8 +20,6 @@ class FileFacts(BaseModel):
 
 
 class Commit(BaseModel):
-    """`changes` maps each path to the lines it gained or lost, never the commit's total."""
-
     sha: str
     authored_at: datetime
     author: str

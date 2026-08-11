@@ -16,7 +16,6 @@ WEB = Path(__file__).resolve().parents[1] / "web"
 
 app = FastAPI(title="Standup", version="0.1.0")
 
-# `next dev` on :3000 is cross-origin. A packaged install serves the GUI from WEB and never is.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -31,6 +30,5 @@ app.include_router(decks_router)
 app.include_router(jobs_router)
 app.add_exception_handler(StandupError, handle_error)
 
-# Last, so it never shadows a route. Absent until `npm run build` has been run.
 if WEB.is_dir():
     app.mount("/", StaticFiles(directory=WEB, html=True), name="web")

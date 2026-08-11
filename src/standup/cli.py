@@ -1,5 +1,3 @@
-"""The `standup` command: serve the GUI and open it."""
-
 import argparse
 import threading
 import webbrowser
@@ -11,7 +9,7 @@ from standup.core import llm
 
 UNCONFIGURED = """Standup needs a model before it can do anything. Three ways:
 
-  1. Subscribe   - sign in, we hold the key          (not built)
+  1. Subscribe   - sign in, we hold the key
   2. Your key    - ANTHROPIC_API_KEY or GEMINI_API_KEY in ~/.standup/.env
   3. Local model - LLM_BASE_URL in the same file
 
@@ -31,6 +29,7 @@ def main() -> None:
     if not WEB.is_dir():
         print(f"No GUI built, so {address} serves the API only. Build it with: cd ui && npm run build")
     elif not options.no_browser:
+        # Opens browser tab for GUI
         threading.Timer(1.0, webbrowser.open, [address]).start()
 
     uvicorn.run("standup.api.app:app", host="127.0.0.1", port=options.port)

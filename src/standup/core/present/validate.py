@@ -31,7 +31,6 @@ def problems(plan: SlidePlan, selection: Selection, index: Index) -> list[str]:
     if actual != expected:
         faults.append(f"the slides must be exactly {expected}, in that order, but were {actual}")
 
-    # A file deleted in the window can be selected, so history counts as existing too.
     paths = {facts.path for facts in index.files}
     paths |= {path for commit in index.commits for path in commit.changes}
     suffixes = {PurePosixPath(path).suffix for path in paths} - {""}

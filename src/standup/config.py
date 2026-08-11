@@ -7,7 +7,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        # An installed copy has no repo beside it, so the user's own directory comes first.
         env_file=(Path.home() / ".standup" / ".env", REPO_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",
         extra="ignore",
@@ -17,7 +16,6 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     llm_model: str = "claude-opus-5"
     gemini_api_key: str = ""
-    # flash-lite does no thinking, so a small token budget still leaves room for an answer.
     gemini_model: str = "gemini-flash-lite-latest"
     llm_max_tokens: int = 4096
     llm_max_concurrency: int = 8

@@ -28,7 +28,6 @@ MAX_FILE_BYTES = 1_000_000
 
 _QUOTED = re.compile(r"""["'`]([^"'`\n]+)["'`]""")
 _AFTER_KEYWORD = re.compile(r"\b(?:from|use|import|require|include)\b\s+([\w.:/\\@-]+)")
-# ESM writes the compiled extension in the specifier: "./util.js" is util.ts on disk.
 _SPECIFIER_SUFFIXES = (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts")
 
 
