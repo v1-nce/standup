@@ -3,6 +3,7 @@
 import asyncio
 from collections import defaultdict
 from collections.abc import Coroutine
+from contextlib import contextmanager
 from typing import Literal
 from uuid import uuid4
 
@@ -24,7 +25,9 @@ class Job(BaseModel):
 _JOBS: dict[str, Job] = {}
 _LIVE: dict[str, asyncio.Task[None]] = {}
 _LOOSE: set[asyncio.Task[None]] = set()
+_STARTING: defaultdict[str, int] = defaultdict(int)
 _INDEXING: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+_PENDING_INDEXING: defaultdict[str, int] = defaultdict(int)
 
 
 async def _run(job: Job, work: Coroutine[None, None, None]) -> None:
@@ -56,6 +59,39 @@ def start(step: str, work: Coroutine[None, None, None], *, lock: str | None = No
     return job
 
 
+@contextmanager
+def starting(key: str, *, exclusive: bool = False):
+    running = _LIVE.get(key)
+    if exclusive and ((running is not None and not running.done()) or _STARTING[key] > 0):
+        raise Busy(f"{key} is already working")
+    _STARTING[key] += 1
+    try:
+        yield
+    finally:
+        _STARTING[key] -= 1
+
+
+def start_indexing(step: str, key: str, work: Coroutine[None, None, None]) -> Job:
+    """Queue indexing and mark the project busy before the response can return."""
+    _PENDING_INDEXING[key] += 1
+
+    async def queued() -> None:
+        try:
+            async with indexing_lock(key):
+                await work
+        finally:
+            _PENDING_INDEXING[key] -= 1
+
+    queued_work = queued()
+    try:
+        return start(step, queued_work)
+    except Exception:
+        queued_work.close()
+        work.close()
+        _PENDING_INDEXING[key] -= 1
+        raise
+
+
 def indexing_lock(key: str) -> asyncio.Lock:
     """The lock indexing serialises on — a second attach mid-index queues rather than 409s.
     `busy()` also reads it, so a delete or selection edit mid-index is refused instead of racing."""
@@ -66,7 +102,12 @@ def busy(key: str) -> bool:
     """Whether a job is running for this key, or indexing is in progress — the same check `start`
     makes before refusing, plus indexing's own serialising lock."""
     running = _LIVE.get(key)
-    return (running is not None and not running.done()) or _INDEXING[key].locked()
+    return (
+        (running is not None and not running.done())
+        or _STARTING[key] > 0
+        or _PENDING_INDEXING[key] > 0
+        or _INDEXING[key].locked()
+    )
 
 
 @router.get("/{job_id}")

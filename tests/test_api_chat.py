@@ -1,12 +1,14 @@
 import httpx
 import pytest
 
+from standup.api import jobs
 from standup.api import projects as projects_api
 from standup.api import routes
 from standup.api.app import app
 from standup.core.agent import Turn
 from standup.core.agent.commands import Select, Write
 from standup.core.models import Scope, Slide
+from standup.core.projects import ChatLog
 from standup.errors import Upstream
 from tests.conftest import settled
 
@@ -79,6 +81,46 @@ async def test_a_project_with_no_deck_says_so(wired):
     async with wired as client:
         created = await client.post("/projects", json={"name": "Empty"})
         assert (await client.get(f"/projects/{created.json()['id']}/deck")).status_code == 404
+
+
+async def test_the_users_message_is_visible_immediately_after_the_202(wired, project):
+    """The append happens synchronously before send_message returns — a GET /chat racing the
+    202, before the job has even started running, must never miss the message that started it."""
+    async with wired as client:
+        accepted = await client.post(
+            f"/projects/{project.id}/chat", json={"content": "standup tomorrow"}
+        )
+        assert accepted.status_code == 202
+
+        history = (await client.get(f"/projects/{project.id}/chat")).json()
+        assert [m["role"] for m in history] == ["user"]
+        assert history[0]["content"] == "standup tomorrow"
+
+        await settled(client, accepted.json()["id"])
+
+
+async def test_the_users_message_is_logged_before_the_turn_is_scheduled(wired, store, monkeypatch, project):
+    real_start = jobs.start
+
+    def assert_logged_then_start(step, work, *, lock=None):
+        try:
+            history = ChatLog(store.paths(project.id).chat).read()
+            assert [(message.role, message.content) for message in history] == [
+                ("user", "standup tomorrow")
+            ]
+        except Exception:
+            work.close()
+            raise
+        return real_start(step, work, lock=lock)
+
+    monkeypatch.setattr(jobs, "start", assert_logged_then_start)
+
+    async with wired as client:
+        accepted = await client.post(
+            f"/projects/{project.id}/chat", json={"content": "standup tomorrow"}
+        )
+        assert accepted.status_code == 202
+        await settled(client, accepted.json()["id"])
 
 
 async def test_a_second_message_while_one_is_running_is_refused(wired):

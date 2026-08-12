@@ -3,7 +3,6 @@
 import hashlib
 import re
 import zipfile
-from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -35,7 +34,6 @@ IMAGE_MEDIA_TYPES = {
 ATTACHABLE = DOC_SUFFIXES | {PDF_SUFFIX} | OFFICE_SUFFIXES | set(IMAGE_MEDIA_TYPES)
 MAX_DOC_CHARS = 4_000_000
 MIN_NAME_LENGTH = 5
-_WORD = re.compile(r"[\w?!-]+")
 
 IMAGE_PROMPT = (
     "Describe this image as evidence for a status update: what it shows, any text or data "
@@ -147,16 +145,19 @@ def prose(root: Path) -> str:
 
 
 def emphasis(text: str, files: list[FileFacts]) -> dict[str, float]:
+    """Mentions of each symbol's own name, whatever punctuation it's built from — `valid?`,
+    `operator+`, `make-list`. A single tokenizer regex can't enumerate every language's identifier
+    punctuation, so each name is searched for directly instead, bounded on both sides by anything
+    that isn't a word character (`re`'s own pattern cache makes this free to repeat per name)."""
     if not text:
         return {}
     lowered = text.lower()
-    mentioned = Counter(_WORD.findall(text))
 
     rates = {}
     for facts in files:
         filename = Path(facts.path).name
         names = [s.name for s in facts.symbols if len(s.name) >= MIN_NAME_LENGTH]
-        mentions = sum(mentioned[name] for name in names)
+        mentions = sum(len(re.findall(rf"(?<!\w){re.escape(name)}(?!\w)", text)) for name in names)
         if len(filename) >= MIN_NAME_LENGTH:
             names.append(filename)
             mentions += lowered.count(filename.lower())

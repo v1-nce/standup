@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from pathlib import Path
 
 import httpx
@@ -7,8 +9,9 @@ from fastapi.testclient import TestClient
 from standup.api import jobs, routes
 from standup.api import projects as projects_api
 from standup.api.app import app
-from standup.core import pipeline
+from standup.core import index, pipeline
 from standup.core.models import Scope
+from standup.core.projects import ProjectStore
 from standup.errors import NotFound
 from tests.conftest import Stuck, pdf_saying
 from tests.conftest import settled as await_settled
@@ -34,6 +37,23 @@ def settled(client: TestClient, job: dict) -> dict:
         if job["state"] != "running":
             return job
     raise AssertionError("the job never finished")
+
+
+async def test_starting_indexing_marks_the_project_busy_before_work_runs():
+    release = asyncio.Event()
+
+    async def work():
+        await release.wait()
+
+    job = jobs.start_indexing("indexing", "project-1", work())
+    try:
+        assert jobs.busy("project-1")
+    finally:
+        release.set()
+        for _ in range(200):
+            if jobs.read_job(job.id).state != "running":
+                break
+            await asyncio.sleep(0.02)
 
 
 def test_a_new_project_has_nothing_attached(client, empty):
@@ -154,6 +174,32 @@ def test_one_refusal_leaves_the_whole_selection_unattached(client, empty, repo, 
     assert client.get(f"/projects/{empty}/context").json() == []
 
 
+def test_a_rollback_failure_does_not_mask_the_original_attach_error(client, empty, repo, tmp_path, monkeypatch):
+    """One refused location rolls back what was attached before it; if rolling one of those back
+    also fails, the caller must still see the original refusal, not the rollback's own failure."""
+    real_detach = ProjectStore.detach
+    calls: list[str] = []
+
+    def flaky_detach(self, project_id, resource_id):
+        calls.append(resource_id)
+        if len(calls) == 1:
+            raise OSError("simulated rollback failure")
+        return real_detach(self, project_id, resource_id)
+
+    monkeypatch.setattr(ProjectStore, "detach", flaky_detach)
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes")
+
+    refused = client.post(
+        f"/projects/{empty}/context",
+        json={"locations": [str(repo), str(note), str(repo / "src")]},
+    )
+
+    assert refused.status_code == 400
+    assert "already covers" in refused.json()["detail"]
+    assert len(calls) == 2  # both rollback attempts ran, despite the first one failing
+
+
 def test_a_folder_that_is_not_there_is_refused(client, empty, tmp_path):
     refused = client.post(f"/projects/{empty}/context", json={"locations": [str(tmp_path / "nope")]})
     assert refused.status_code == 400
@@ -213,3 +259,30 @@ async def test_removing_context_is_refused_while_indexing_is_in_progress(store, 
     ):
         refused = await async_client.delete(f"/projects/{project.id}/context/{resource_id}")
         assert refused.status_code == 409
+
+
+async def test_removing_context_is_refused_immediately_after_attach_is_accepted(store, monkeypatch, project, tmp_path):
+    """The attach response must not return before the project is marked busy for indexing."""
+    monkeypatch.setattr(projects_api, "get_store", lambda: store)
+    release = threading.Event()
+
+    def wait_until_released(root, facts_dir):
+        release.wait(timeout=5)
+
+    monkeypatch.setattr(index, "ensure", wait_until_released)
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes")
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as async_client:
+        accepted = await async_client.post(
+            f"/projects/{project.id}/context", json={"locations": [str(note)]}
+        )
+        assert accepted.status_code == 202
+
+        attached = (await async_client.get(f"/projects/{project.id}/context")).json()[-1]
+        refused = await async_client.delete(f"/projects/{project.id}/context/{attached['id']}")
+        assert refused.status_code == 409
+
+        release.set()
+        job = await await_settled(async_client, accepted.json()["id"])
+        assert job["state"] == "done"

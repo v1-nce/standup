@@ -3,7 +3,7 @@
 import re
 from pathlib import PurePosixPath
 
-from standup.core.models import Index, Selection, SlidePlan
+from standup.core.models import Index, Selection, Slide, SlidePlan
 
 _TOKEN = re.compile(r"[A-Za-z0-9_./-]+")
 _CALL = re.compile(r"\b([A-Za-z_]\w*)\s*\(\)")
@@ -31,12 +31,19 @@ def problems(plan: SlidePlan, selection: Selection, index: Index) -> list[str]:
     if actual != expected:
         faults.append(f"the slides must be exactly {expected}, in that order, but were {actual}")
 
+    return [*faults, *slide_problems(plan.slides, selection, index)]
+
+
+def slide_problems(slides: list[Slide], selection: Selection, index: Index) -> list[str]:
+    """Grounding faults for the slides being written, without requiring a complete plan."""
+    faults = []
+
     paths = {facts.path for facts in index.files}
     paths |= {path for commit in index.commits for path in commit.changes}
     suffixes = {PurePosixPath(path).suffix for path in paths} - {""}
-    candidates = {entry.candidate.id: entry.candidate for entry in [*selection.chosen, *selection.cut]}
+    candidates = {entry.candidate.id: entry.candidate for entry in selection.chosen}
 
-    for slide in plan.slides:
+    for slide in slides:
         candidate = candidates.get(slide.candidate_id)
         theirs = set(candidate.paths) if candidate else set()
         symbols = {

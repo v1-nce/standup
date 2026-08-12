@@ -156,6 +156,18 @@ def test_emphasis_credits_ruby_style_predicate_and_bang_identifiers():
     assert emphasis(text, facts)["lib/user.rb"] == 1.0
 
 
+def test_emphasis_credits_cpp_operator_overload_identifiers():
+    """No fixed character class enumerates every language's punctuation — operator+ needs the
+    same whole-name credit valid? gets, without special-casing + into the tokenizer."""
+    facts = [
+        FileFacts(
+            path="src/vector.cpp", content_hash="h", symbols=[Symbol(name="operator+", kind="Function", line=1)]
+        )
+    ]
+    text = "The operator+ overload adds two vectors. See operator+ for the implementation."
+    assert emphasis(text, facts)["src/vector.cpp"] == 1.0
+
+
 def test_no_git_means_no_commits_not_a_failure(repo):
     assert commits(repo) == ([], True)
 

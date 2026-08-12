@@ -17,14 +17,17 @@ router = APIRouter(prefix="/projects/{project_id}/context", tags=["context"])
 async def _index(project_id: str, resources: list[Resource]) -> None:
     """Only what was just attached. Merging happens per chat turn and is never stored."""
     home = projects.get_store().paths(project_id).index
-    async with jobs.indexing_lock(project_id):
-        for resource in resources:
-            await asyncio.to_thread(index.ensure, Path(resource.location), home / resource.id)
+    for resource in resources:
+        await asyncio.to_thread(index.ensure, Path(resource.location), home / resource.id)
 
 
 async def _detach_all(store: ProjectStore, project_id: str, attached: list[Resource]) -> None:
-    """The failure path both attach routes share: whatever was kept this call, kept for nothing."""
-    await asyncio.gather(*(asyncio.to_thread(store.detach, project_id, r.id) for r in attached))
+    """The failure path both attach routes share: whatever was kept this call, kept for nothing.
+    Best-effort — a rollback failure must never replace the real error the caller is about to raise."""
+    await asyncio.gather(
+        *(asyncio.to_thread(store.detach, project_id, r.id) for r in attached),
+        return_exceptions=True,
+    )
 
 
 @router.get("")
@@ -45,7 +48,7 @@ async def add_paths(project_id: str, body: ContextAdd) -> jobs.Job:
         await _detach_all(store, project_id, attached)
         raise
 
-    return jobs.start("indexing", _index(project_id, attached))
+    return jobs.start_indexing("indexing", project_id, _index(project_id, attached))
 
 
 @router.post("/files", status_code=202)
@@ -65,7 +68,7 @@ async def add_files(project_id: str, files: list[UploadFile]) -> jobs.Job:
         await _detach_all(store, project_id, attached)
         raise
 
-    return jobs.start("indexing", _index(project_id, attached))
+    return jobs.start_indexing("indexing", project_id, _index(project_id, attached))
 
 
 @router.delete("/{resource_id}", status_code=204)

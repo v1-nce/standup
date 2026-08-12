@@ -7,7 +7,7 @@ import pytest
 from pydantic import BaseModel
 
 from standup.core.llm import LLMClient
-from standup.core.llm.anthropic_client import _translated
+from standup.core.llm.anthropic_client import MAX_RETRIES, _translated
 from standup.errors import NotConfigured, Upstream
 
 
@@ -48,6 +48,13 @@ def attach(client: LLMClient, response) -> FakeMessages:
 def test_missing_key_raises():
     with pytest.raises(NotConfigured):
         make_client(api_key="")
+
+
+def test_the_retry_count_is_explicit_not_left_to_the_sdks_own_default():
+    """Gemini's own retry loop assumes this matches — pin it so an SDK default change can't
+    silently break that assumption."""
+    client = make_client()
+    assert client._client.max_retries == MAX_RETRIES
 
 
 def test_provider_errors_do_not_escape():

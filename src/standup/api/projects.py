@@ -15,6 +15,7 @@ from standup.core.models import (
     ProjectRename,
 )
 from standup.core.projects import ChatLog, ProjectStore
+from standup.errors import Busy
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -52,6 +53,8 @@ def rename_project(project_id: str, body: ProjectRename) -> Project:
 
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: str) -> None:
+    if jobs.busy(project_id):
+        raise Busy(f"{project_id} is already working")
     get_store().delete(project_id)
 
 
@@ -60,11 +63,9 @@ def read_chat(project_id: str) -> list[ChatMessage]:
     return _chat(project_id).read()
 
 
-async def _turn(client: ModelClient, project_id: str, log: ChatLog, content: str) -> None:
-    """Appends the user's message itself, so a turn `jobs.start` refuses never touches the log.
-    A failure past that point still closes the turn, so the log never ends on a question nobody
-    answered."""
-    history = await asyncio.to_thread(log.append_and_read, "user", content)
+async def _turn(client: ModelClient, project_id: str, log: ChatLog) -> None:
+    """The user's message is appended by `send_message` before this task is scheduled."""
+    history = await asyncio.to_thread(log.read)
     try:
         reply = await agent.converse(client, get_store(), project_id, history)
     except Exception as failure:
@@ -75,6 +76,8 @@ async def _turn(client: ModelClient, project_id: str, log: ChatLog, content: str
 
 @router.post("/{project_id}/chat", status_code=202)
 async def send_message(project_id: str, body: ChatSend) -> jobs.Job:
-    log = await asyncio.to_thread(_chat, project_id)
-    client = routes.get_client()
-    return jobs.start("thinking", _turn(client, project_id, log, body.content), lock=project_id)
+    with jobs.starting(project_id, exclusive=True):
+        log = await asyncio.to_thread(_chat, project_id)
+        client = routes.get_client()
+        log.append("user", body.content)
+        return jobs.start("thinking", _turn(client, project_id, log), lock=project_id)

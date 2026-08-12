@@ -1,3 +1,7 @@
+import asyncio
+import threading
+
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -6,6 +10,7 @@ from standup.api import routes
 from standup.api.app import app
 from standup.config import settings
 from standup.core.projects import ProjectStore
+from tests.conftest import Stuck, settled
 
 
 @pytest.fixture
@@ -60,6 +65,55 @@ def test_delete(client):
     project_id = client.post("/projects", json={"name": "Temp"}).json()["id"]
     assert client.delete(f"/projects/{project_id}").status_code == 204
     assert client.get("/projects").json() == []
+
+
+async def test_delete_is_refused_while_a_turn_is_running(tmp_path, monkeypatch):
+    store = ProjectStore(tmp_path / "projects")
+    project = store.create("Busy")
+    monkeypatch.setattr(projects_api, "get_store", lambda: store)
+    stuck = Stuck()
+    monkeypatch.setattr(routes, "get_client", lambda: stuck)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        turn = await client.post(f"/projects/{project.id}/chat", json={"content": "go"})
+        assert turn.status_code == 202
+
+        refused = await client.delete(f"/projects/{project.id}")
+        assert refused.status_code == 409
+
+        stuck.released.set()
+        job = await settled(client, turn.json()["id"])
+        assert job["state"] == "done"
+
+
+async def test_delete_is_refused_while_a_turn_is_starting(tmp_path, monkeypatch):
+    store = ProjectStore(tmp_path / "projects")
+    project = store.create("Starting")
+    monkeypatch.setattr(projects_api, "get_store", lambda: store)
+    monkeypatch.setattr(routes, "get_client", lambda: Stuck())
+    entered = threading.Event()
+    release = threading.Event()
+    real_chat = projects_api._chat
+
+    def delayed_chat(project_id):
+        entered.set()
+        release.wait(timeout=5)
+        return real_chat(project_id)
+
+    monkeypatch.setattr(projects_api, "_chat", delayed_chat)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        sending = asyncio.create_task(
+            client.post(f"/projects/{project.id}/chat", json={"content": "go"})
+        )
+        await asyncio.to_thread(entered.wait, 5)
+
+        refused = await client.delete(f"/projects/{project.id}")
+        assert refused.status_code == 409
+
+        release.set()
+        turn = await sending
+        assert turn.status_code == 202
 
 
 def test_chat_starts_empty(client):

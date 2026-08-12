@@ -22,8 +22,3 @@ class ChatLog:
             return []
         lines = self._file.read_text(encoding="utf-8").splitlines()
         return [ChatMessage.model_validate_json(line) for line in lines if line.strip()]
-
-    def append_and_read(self, role: str, content: str) -> list[ChatMessage]:
-        """Appends, then returns the whole conversation including it — one file open, not two."""
-        self.append(role, content)
-        return self.read()

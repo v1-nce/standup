@@ -12,6 +12,7 @@ from standup.config import settings
 from standup.errors import NotConfigured, Upstream
 
 T = TypeVar("T", bound=BaseModel)
+MAX_RETRIES = 2
 
 
 @contextmanager
@@ -38,7 +39,7 @@ class LLMClient:
         if not api_key:
             raise NotConfigured("No API key. Set ANTHROPIC_API_KEY in .env")
         self._client = anthropic.AsyncAnthropic(
-            api_key=api_key, base_url=base_url, timeout=timeout
+            api_key=api_key, base_url=base_url, timeout=timeout, max_retries=MAX_RETRIES
         )
         self._model = model
         self._max_tokens = max_tokens

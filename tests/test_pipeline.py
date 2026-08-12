@@ -1,3 +1,4 @@
+import threading
 from datetime import UTC, datetime
 
 import pytest
@@ -59,6 +60,34 @@ def test_an_edit_is_obeyed_literally(store, project, index):
     assert backwards[1] in {e.candidate.id for e in trimmed.selection.cut}
 
 
+def test_an_edit_blocks_while_the_projects_lock_is_held(store, project, index):
+    """select/edit/write/forget share one per-project lock — a worker thread and the event loop
+    both reach them, and only a real lock (not a point-in-time busy check) is safe across that."""
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+
+    with pipeline._LOCKS[project.id]:
+        thread = threading.Thread(target=pipeline.edit, args=(store, project.id, []))
+        thread.start()
+        thread.join(timeout=0.3)
+        assert thread.is_alive()
+
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+
+
+def test_read_blocks_while_the_projects_lock_is_held(store, project, index):
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+
+    with pipeline._LOCKS[project.id]:
+        thread = threading.Thread(target=pipeline.read, args=(store, project.id))
+        thread.start()
+        thread.join(timeout=0.3)
+        assert thread.is_alive()
+
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+
+
 def test_naming_the_same_item_twice_asks_for_it_once(store, project, index):
     """Repeats used to survive as duplicate entries, then render as one block copied per slide."""
     deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
@@ -85,6 +114,44 @@ def test_writing_slides_that_match_the_selection_is_accepted(store, project, ind
     assert [s.candidate_id for s in written.slides] == [
         e.candidate.id for e in deck.selection.chosen
     ]
+
+
+def test_writing_one_selected_slide_leaves_the_rest_unwritten(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    first = slides_for(deck)[:1]
+
+    written = pipeline.write(store, project.id, index, first)
+
+    assert written.slides == first
+    assert pipeline.read(store, project.id).slides == first
+
+
+def test_writing_remaining_slides_merges_them_in_selection_order(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    drafted = slides_for(deck)
+    pipeline.write(store, project.id, index, drafted[1:])
+
+    written = pipeline.write(store, project.id, index, drafted[:1])
+
+    assert written.slides == drafted
+
+
+def test_a_partial_slide_still_must_be_grounded(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    bad = slides_for(deck)[:1]
+    bad[0].bullets = ["Rewrote src/imaginary.py"]
+
+    with pytest.raises(InvalidInput, match="no file 'src/imaginary.py'"):
+        pipeline.write(store, project.id, index, bad)
+    assert not (store.paths(project.id).deck / pipeline.PLAN_FILE).is_file()
+
+
+def test_rendering_a_partial_plan_is_refused(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    pipeline.write(store, project.id, index, slides_for(deck)[:1])
+
+    with pytest.raises(InvalidInput, match="not complete"):
+        pipeline.render(store, project.id)
 
 
 def test_writing_a_slide_for_something_not_chosen_is_refused(store, project, index):
