@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, reason, type ChatMessage, type Deck } from "@/app/api/client";
 
 /** One project's conversation and the deck it is building. They change together, so they live together. */
@@ -9,15 +9,21 @@ export function useConversation(projectId: string | null) {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const latest = useRef(0);
+  const active = useRef(projectId);
+  useEffect(() => {
+    active.current = projectId;
+  });
 
-  const refresh = useCallback(
-    (id: string) =>
-      Promise.all([api.readChat(id), api.readDeck(id)]).then(([said, current]) => {
+  const refresh = useCallback((id: string) => {
+    const mine = ++latest.current;
+    return Promise.all([api.readChat(id), api.readDeck(id)]).then(([said, current]) => {
+      if (mine === latest.current) {
         setMessages(said);
         setDeck(current);
-      }),
-    [],
-  );
+      }
+    });
+  }, []);
 
   const [showing, setShowing] = useState(projectId);
   if (showing !== projectId) {
@@ -25,6 +31,7 @@ export function useConversation(projectId: string | null) {
     setMessages([]);
     setDeck(null);
     setError(null);
+    setPending(false);
   }
 
   useEffect(() => {
@@ -41,12 +48,13 @@ export function useConversation(projectId: string | null) {
       try {
         const started = await api.sendMessage(projectId, content);
         const finished = await api.awaitJob(started.id);
+        if (active.current !== projectId) return;
         if (finished.state === "failed") setError(finished.detail ?? "The turn failed");
         await refresh(projectId);
       } catch (failure) {
-        setError(reason(failure));
+        if (active.current === projectId) setError(reason(failure));
       } finally {
-        setPending(false);
+        if (active.current === projectId) setPending(false);
       }
     },
     [projectId, refresh],

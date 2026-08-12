@@ -16,6 +16,7 @@ export default function Home() {
   const [picked, setPicked] = useState<string | null>(null);
 
   const projects = useProjects();
+  if (picked && !projects.projects.some((p) => p.id === picked)) setPicked(null);
   const selectedId = picked ?? projects.projects[0]?.id ?? null;
   const { deck, error, messages, pending, send } = useConversation(selectedId);
 

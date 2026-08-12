@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Project } from "@/app/api/client";
 import { IconButton, PencilPath, TrashPath } from "@/app/components/IconButton";
 
@@ -21,10 +21,16 @@ export function ProjectRow({
   selected: boolean;
 }) {
   const [editing, setEditing] = useState(false);
+  const cancelling = useRef(false);
 
   const commit = (value: string) => {
     const name = value.trim();
     if (name && name !== project.name) onRename(name);
+    setEditing(false);
+  };
+
+  const cancel = () => {
+    cancelling.current = true;
     setEditing(false);
   };
 
@@ -35,10 +41,16 @@ export function ProjectRow({
         aria-label={`Rename ${project.name}`}
         className="field"
         defaultValue={project.name}
-        onBlur={(event) => commit(event.currentTarget.value)}
+        onBlur={(event) => {
+          if (cancelling.current) {
+            cancelling.current = false;
+            return;
+          }
+          commit(event.currentTarget.value);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Enter") commit(event.currentTarget.value);
-          if (event.key === "Escape") setEditing(false);
+          if (event.key === "Escape") cancel();
         }}
       />
     );

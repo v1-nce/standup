@@ -83,7 +83,7 @@ export const api = {
   awaitJob: async (jobId: string, signal?: AbortSignal): Promise<Job> => {
     const where = `/jobs/${encodeURIComponent(jobId)}`;
     for (;;) {
-      const job: Job = await request(where).then((r) => r.json());
+      const job: Job = await request(where, { signal }).then((r) => r.json());
       if (job.state !== "running" || signal?.aborted) return job;
       await new Promise((wake) => setTimeout(wake, POLL_MS));
     }

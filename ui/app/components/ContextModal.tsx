@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { ClosePath, IconButton, TrashPath } from "@/app/components/IconButton";
 import { useProjectContext } from "@/app/hooks/useContext";
 
-const CONTROL = "border border-ink px-3 py-1.5 font-mono text-xs transition-colors hover:bg-ink/5";
+const CONTROL =
+  "border border-ink px-3 py-1.5 font-mono text-xs transition-colors hover:bg-ink/5 disabled:pointer-events-none disabled:opacity-50";
 
 /** What a project may draw on. A folder is named by its path; a document is handed over whole,
  *  because a page is never told where a dropped file lives. */
 export function ContextModal({ onClose, projectId }: { onClose: () => void; projectId: string }) {
-  const { addFiles, addFolder, error, remove, resources } = useProjectContext(projectId);
+  const { addFiles, addFolder, busy, error, remove, resources } = useProjectContext(projectId);
   const frame = useRef<HTMLDialogElement>(null);
   const chooser = useRef<HTMLInputElement>(null);
   const [path, setPath] = useState("");
@@ -49,34 +50,37 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
           }}
         >
           <input
-            className="min-w-0 flex-1 border border-rule bg-transparent px-3 py-1.5 font-mono text-xs placeholder:text-muted focus:border-ink focus:outline-none"
+            className="min-w-0 flex-1 border border-rule bg-transparent px-3 py-1.5 font-mono text-xs placeholder:text-muted focus:border-ink focus:outline-none disabled:opacity-50"
             aria-label="Folder path"
+            disabled={busy}
             placeholder="Add folder (path)"
             value={path}
             onChange={(event) => setPath(event.target.value)}
           />
-          <button className={CONTROL} type="submit">
+          <button className={CONTROL} disabled={busy} type="submit">
             Add
           </button>
         </form>
 
         <div
+          aria-busy={busy}
           className={`flex shrink-0 flex-col items-center gap-3 border border-dashed p-6 transition-colors ${
             over ? "border-ink bg-ink/5" : "border-rule"
           }`}
           onDragLeave={() => setOver(false)}
           onDragOver={(event) => {
+            if (busy) return;
             event.preventDefault();
             setOver(true);
           }}
           onDrop={(event) => {
             event.preventDefault();
             setOver(false);
-            void addFiles(event.dataTransfer.files);
+            if (!busy) void addFiles(event.dataTransfer.files);
           }}
         >
-          <p className="text-sm text-muted">Drop documents here</p>
-          <button className={CONTROL} onClick={() => chooser.current?.click()}>
+          <p className="text-sm text-muted">{busy ? "Indexing…" : "Drop documents here"}</p>
+          <button className={CONTROL} disabled={busy} onClick={() => chooser.current?.click()}>
             Add file
           </button>
           <input
@@ -84,6 +88,7 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
             className="hidden"
             type="file"
             multiple
+            disabled={busy}
             onChange={(event) => {
               if (event.target.files?.length) void addFiles(event.target.files);
               event.target.value = "";
@@ -102,6 +107,7 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
               </span>
               <IconButton
                 className="h-8 w-8 shrink-0 text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-accent"
+                disabled={busy}
                 label={`Remove ${resource.name}`}
                 onClick={() => void remove(resource.id)}
               >

@@ -1,20 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Project } from "@/app/api/client";
 
 export function NewProject({ onCreate }: { onCreate: (name: string) => Promise<Project | null> }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const cancelling = useRef(false);
 
   const submit = (value: string) => {
     const name = value.trim();
     if (!name) return setOpen(false);
     setBusy(true);
-    void onCreate(name).then((made) => {
-      setBusy(false);
-      setOpen(!made);
-    });
+    void onCreate(name)
+      .then((made) => setOpen(!made))
+      .finally(() => setBusy(false));
+  };
+
+  const cancel = () => {
+    cancelling.current = true;
+    setOpen(false);
   };
 
   if (!open) {
@@ -36,9 +41,16 @@ export function NewProject({ onCreate }: { onCreate: (name: string) => Promise<P
       className="field"
       disabled={busy}
       placeholder="Project name"
+      onBlur={(event) => {
+        if (cancelling.current) {
+          cancelling.current = false;
+          return;
+        }
+        if (!busy) submit(event.currentTarget.value);
+      }}
       onKeyDown={(event) => {
         if (event.key === "Enter") submit(event.currentTarget.value);
-        if (event.key === "Escape") setOpen(false);
+        if (event.key === "Escape") cancel();
       }}
     />
   );

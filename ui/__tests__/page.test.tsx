@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
+import type { ChatMessage } from "../app/api/client";
 import Page from "../app/page";
 import { deck, project } from "./fixtures";
 
@@ -63,6 +64,100 @@ test("the composer is shut while a turn is in flight", async () => {
 
   expect(screen.getByText("Working…")).toBeDefined();
   await waitFor(() => expect(composer()).toHaveProperty("disabled", false));
+});
+
+test("a slow send left behind on the old project doesn't leave the new one stuck disabled", async () => {
+  const state = { projects: [project("a-1", "standup"), project("b-2", "flask")] };
+  const control: { resolveSlowJob?: () => void } = {};
+
+  const fetched = vi.fn((url: string, init?: RequestInit) => {
+    if (url.endsWith("/projects")) return Promise.resolve(Response.json(state.projects));
+    if (url.endsWith("/deck")) {
+      return Promise.resolve(new Response(JSON.stringify({ detail: "No deck yet" }), { status: 404 }));
+    }
+    if (init?.method === "POST" && url.includes("a-1/chat")) {
+      return Promise.resolve(Response.json({ id: "job-a", state: "running", step: "thinking" }, { status: 202 }));
+    }
+    if (url.includes("/jobs/job-a")) {
+      return new Promise((resolve) => {
+        control.resolveSlowJob = () => resolve(Response.json({ id: "job-a", state: "done", step: "thinking" }));
+      });
+    }
+    return Promise.resolve(Response.json([]));
+  });
+  vi.stubGlobal("fetch", fetched);
+
+  render(<Page />);
+  await screen.findByText("No deck yet");
+
+  fireEvent.change(composer(), { target: { value: "go" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(screen.getByText("Working…")).toBeDefined();
+
+  fireEvent.click(await screen.findByRole("button", { name: "flask" }));
+  expect(composer()).toHaveProperty("disabled", false);
+
+  // A's send only resolves now, well after B became the active project.
+  control.resolveSlowJob?.();
+  await waitFor(() => expect(fetched.mock.calls.some(([u]) => String(u).includes("jobs/job-a"))).toBe(true));
+
+  expect(composer()).toHaveProperty("disabled", false);
+});
+
+test("deleting the active project falls back to another instead of dying on the dead id", async () => {
+  const state = { projects: [project("a-1", "standup"), project("b-2", "flask")] };
+  const fetched = vi.fn((url: string, init?: RequestInit) => {
+    if (init?.method === "DELETE") {
+      state.projects = state.projects.filter((p) => p.id !== "b-2");
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
+    if (url.endsWith("/chat")) return Promise.resolve(Response.json([]));
+    if (url.endsWith("/deck")) {
+      return Promise.resolve(new Response(JSON.stringify({ detail: "No deck yet" }), { status: 404 }));
+    }
+    if (url.endsWith("/projects")) return Promise.resolve(Response.json(state.projects));
+    return Promise.resolve(Response.json({}));
+  });
+  vi.stubGlobal("fetch", fetched);
+  vi.stubGlobal("confirm", vi.fn(() => true));
+
+  render(<Page />);
+  fireEvent.click(await screen.findByRole("button", { name: "flask" }));
+  fireEvent.click(screen.getByRole("button", { name: "Delete flask" }));
+
+  await waitFor(() => expect(screen.queryByRole("button", { name: "flask" })).toBeNull());
+  expect(screen.getByRole("button", { name: "standup" })).toBeDefined();
+});
+
+test("switching projects while the old one is still loading leaves no stale message behind", async () => {
+  const state: { projects: ReturnType<typeof project>[]; chats: Record<string, ChatMessage[]> } = {
+    projects: [project("a-1", "standup"), project("b-2", "flask")],
+    chats: { "a-1": [{ role: "assistant", content: "About standup", at: "2026-08-05T00:00:00Z" }], "b-2": [] },
+  };
+  const control: { resolveSlowChat?: () => void } = {};
+
+  const fetched = vi.fn((url: string) => {
+    if (url.endsWith("/projects")) return Promise.resolve(Response.json(state.projects));
+    if (url.endsWith("/deck")) {
+      return Promise.resolve(new Response(JSON.stringify({ detail: "No deck yet" }), { status: 404 }));
+    }
+    if (url.includes("a-1/chat")) {
+      return new Promise((resolve) => {
+        control.resolveSlowChat = () => resolve(Response.json(state.chats["a-1"]));
+      });
+    }
+    if (url.includes("b-2/chat")) return Promise.resolve(Response.json(state.chats["b-2"]));
+    return Promise.resolve(Response.json({}));
+  });
+  vi.stubGlobal("fetch", fetched);
+
+  render(<Page />);
+  fireEvent.click(await screen.findByRole("button", { name: "flask" }));
+
+  control.resolveSlowChat?.();
+
+  await waitFor(() => expect(fetched.mock.calls.some(([u]) => String(u).includes("b-2/chat"))).toBe(true));
+  expect(screen.queryByText("About standup")).toBeNull();
 });
 
 test("the composer keeps the arrow keys the deck would otherwise take", async () => {

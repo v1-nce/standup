@@ -49,6 +49,18 @@ test("escape abandons a rename", () => {
   expect(projects.rename).not.toHaveBeenCalled();
 });
 
+test("the blur a real browser fires when escape unmounts the field doesn't resurrect the rename", () => {
+  const { projects } = show();
+
+  fireEvent.click(screen.getByRole("button", { name: "Rename standup" }));
+  const field = screen.getByLabelText("Rename standup");
+  fireEvent.change(field, { target: { value: "nope" } });
+  fireEvent.keyDown(field, { key: "Escape" });
+  fireEvent.blur(field);
+
+  expect(projects.rename).not.toHaveBeenCalled();
+});
+
 test("deleting asks first, and a refusal changes nothing", () => {
   const { projects } = show();
 
@@ -84,6 +96,17 @@ test("escape abandons naming", () => {
 
   expect(projects.create).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "+ New project" })).toBeDefined();
+});
+
+test("the blur a real browser fires when escape unmounts the field doesn't resurrect the create", () => {
+  const { projects } = show();
+
+  const field = startNaming();
+  fireEvent.change(field, { target: { value: "nope" } });
+  fireEvent.keyDown(field, { key: "Escape" });
+  fireEvent.blur(field);
+
+  expect(projects.create).not.toHaveBeenCalled();
 });
 
 test("a name the backend rejects stays on screen to be corrected", async () => {

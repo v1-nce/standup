@@ -84,6 +84,19 @@ test("dropped documents take the same path as chosen ones", async () => {
   await waitFor(() => expect(seen.some((call) => call.path.endsWith("/context/files"))).toBe(true));
 });
 
+test("the add controls are shut while an add is indexing", async () => {
+  render(<ContextModal onClose={vi.fn()} projectId="p-1" />);
+  const field = await screen.findByLabelText("Folder path");
+
+  fireEvent.change(field, { target: { value: "C:/Dev/forge" } });
+  fireEvent.click(screen.getByText("Add"));
+
+  expect(screen.getByText("Add")).toHaveProperty("disabled", true);
+  expect(screen.getByLabelText("Folder path")).toHaveProperty("disabled", true);
+
+  await waitFor(() => expect(screen.getByText("Add")).toHaveProperty("disabled", false));
+});
+
 test("removing something asks the backend to detach it", async () => {
   render(<ContextModal onClose={vi.fn()} projectId="p-1" />);
 
@@ -92,6 +105,29 @@ test("removing something asks the backend to detach it", async () => {
   await waitFor(() =>
     expect(seen.some((call) => call.path.endsWith("/context/spec-2"))).toBe(true),
   );
+});
+
+test("removing something clears a stale error left by an earlier failed add", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((path: string, init?: RequestInit) => {
+      if (path.endsWith("/context") && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ detail: "not a directory" }), { status: 400 }));
+      }
+      if (init?.method === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
+      return Promise.resolve(Response.json(held));
+    }),
+  );
+
+  render(<ContextModal onClose={vi.fn()} projectId="p-1" />);
+  const field = await screen.findByLabelText("Folder path");
+
+  fireEvent.change(field, { target: { value: "C:/nope" } });
+  fireEvent.click(screen.getByText("Add"));
+  expect(await screen.findByText("not a directory")).toBeDefined();
+
+  fireEvent.click(await screen.findByLabelText("Remove spec.pdf"));
+  await waitFor(() => expect(screen.queryByText("not a directory")).toBeNull());
 });
 
 test("the close control reports it, rather than closing behind the caller's back", async () => {

@@ -7,6 +7,7 @@ import { api, reason, type Resource } from "@/app/api/client";
 export function useProjectContext(projectId: string) {
   const [resources, setResources] = useState<Resource[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const latest = useRef(0);
   const leaving = useRef<AbortController>(null);
 
@@ -30,24 +31,30 @@ export function useProjectContext(projectId: string) {
 
   const added = (start: Promise<{ id: string }>) => {
     setError(null);
+    setBusy(true);
     return start
       .then((job) => list().then(() => api.awaitJob(job.id, leaving.current?.signal)))
       .then((done) => {
         if (done.state === "failed") setError(done.detail || "Indexing failed");
       })
       .catch((failure: unknown) => setError(reason(failure)))
-      .finally(list);
+      .finally(() => {
+        setBusy(false);
+        return list();
+      });
   };
 
   return {
     resources,
     error,
+    busy,
     addFolder: (location: string) => added(api.addPaths(projectId, [location])),
     addFiles: (files: FileList | File[]) =>
       files.length ? added(api.addFiles(projectId, files)) : Promise.resolve(),
     remove: (resourceId: string) =>
       api
         .removeContext(projectId, resourceId)
+        .then(() => setError(null))
         .then(list)
         .catch((failure: unknown) => setError(reason(failure))),
   };

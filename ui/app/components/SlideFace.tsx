@@ -13,8 +13,8 @@ export function SlideFace({
       <span className="label">{label}</span>
       <h2 className="text-2xl leading-tight font-semibold text-balance sm:text-4xl">{title}</h2>
       <ul className="flex flex-col gap-1 text-sm text-muted sm:text-base">
-        {bullets.map((bullet) => (
-          <li key={bullet}>{bullet}</li>
+        {bullets.map((bullet, index) => (
+          <li key={index}>{bullet}</li>
         ))}
       </ul>
     </article>
