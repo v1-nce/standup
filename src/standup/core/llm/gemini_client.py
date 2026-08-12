@@ -17,6 +17,8 @@ from standup.errors import NotConfigured, Upstream
 T = TypeVar("T", bound=BaseModel)
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+MAX_RETRIES = 2
+_RETRIABLE_STATUS = {429, 500, 502, 503, 504}
 
 
 def _reason(error: httpx.HTTPError) -> str:
@@ -136,13 +138,24 @@ class GeminiClient:
         if system:
             body["systemInstruction"] = {"parts": [{"text": system}]}
 
-        async with self._semaphore:
-            try:
-                response = await self._http.post(
-                    f"/models/{self._model}:generateContent", json=body
-                )
-                response.raise_for_status()
-            except httpx.HTTPError as e:
-                raise Upstream(f"Gemini request failed: {_reason(e)}") from e
-
+        response = await self._post(body)
         return _spoken(response.json())
+
+    async def _post(self, body: dict[str, Any]) -> httpx.Response:
+        """Backs off a transient failure the way the Anthropic SDK already retries for us. The
+        semaphore covers only one attempt at a time — held across the whole retry loop, a
+        backing-off request would sit on a concurrency slot doing nothing but sleeping."""
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                async with self._semaphore:
+                    response = await self._http.post(f"/models/{self._model}:generateContent", json=body)
+                    response.raise_for_status()
+                return response
+            except httpx.HTTPError as e:
+                retriable = isinstance(e, httpx.TransportError) or (
+                    isinstance(e, httpx.HTTPStatusError)
+                    and e.response.status_code in _RETRIABLE_STATUS
+                )
+                if not retriable or attempt == MAX_RETRIES:
+                    raise Upstream(f"Gemini request failed: {_reason(e)}") from e
+                await asyncio.sleep(0.5 * 2**attempt)

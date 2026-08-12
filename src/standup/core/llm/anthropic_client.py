@@ -107,7 +107,10 @@ class LLMClient:
                 response = await self._client.messages.create(
                     **self._request(content, system, max_tokens)
                 )
-        return "".join(block.text for block in response.content if block.type == "text")
+        said = "".join(block.text for block in response.content if block.type == "text")
+        if not said:
+            raise Upstream(f"Claude said nothing, stopping on {response.stop_reason}")
+        return said
 
     def _request(
         self, content: str | list[dict[str, Any]], system: str | None, max_tokens: int | None
