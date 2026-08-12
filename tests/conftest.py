@@ -1,16 +1,40 @@
 """Fixtures shared by every test that needs a real project on disk."""
 
+import asyncio
 import base64
 import subprocess
 from io import BytesIO
 
+import httpx
 import pytest
 from docx import Document
 from openpyxl import Workbook
 from pptx import Presentation
 
 from standup.core import pipeline
+from standup.core.agent import Turn
 from standup.core.projects import ProjectStore
+
+
+class Stuck:
+    """A model call that only resolves once told to — holds the project's job lock open."""
+
+    def __init__(self) -> None:
+        self.released = asyncio.Event()
+
+    async def structured(self, prompt, schema, *, system=None, max_tokens=None):
+        await self.released.wait()
+        return Turn(reply="done")
+
+
+async def settled(client: httpx.AsyncClient, job_id: str) -> dict:
+    """Polls a job to completion. Raises rather than silently returning one still running."""
+    for _ in range(200):
+        job = (await client.get(f"/jobs/{job_id}")).json()
+        if job["state"] != "running":
+            return job
+        await asyncio.sleep(0.02)
+    raise AssertionError("the job never finished")
 
 
 @pytest.fixture

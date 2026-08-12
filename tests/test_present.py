@@ -145,6 +145,39 @@ def test_evidence_carries_the_commits_but_never_the_scores_or_the_cut(selection,
         assert banned not in cited
 
 
+def test_a_dotfile_is_recognised_rather_than_misread_as_fabricated():
+    """token.strip("./") used to eat the leading dot off a real path like .github/....yml."""
+    dotted = Index(
+        fingerprint="f", built_at=TODAY, files=[FileFacts(path=".github/workflows/ci.yml", content_hash="c")]
+    )
+    scoped = Selection(
+        request="ci",
+        scope=Scope(slide_budget=1),
+        chosen=[
+            Scored(
+                candidate=Candidate(
+                    id=".github/workflows/ci.yml", title="ci.yml", paths=[".github/workflows/ci.yml"]
+                ),
+                signals={},
+                score=1.0,
+            )
+        ],
+    )
+    plan = SlidePlan(
+        slides=[
+            Slide(candidate_id=".github/workflows/ci.yml", title="CI", bullets=["Updated .github/workflows/ci.yml"])
+        ]
+    )
+    assert problems(plan, scoped, dotted) == []
+
+
+def test_a_slide_cannot_borrow_a_sibling_candidate_s_evidence(selection, index):
+    """Both live under src/, but a slide for billing.py must not pass by citing auth.py's file."""
+    drafted = good_plan()
+    drafted.slides[1].bullets = ["Related work landed in src/auth.py"]
+    assert any("no file 'src/auth.py'" in p for p in problems(drafted, selection, index))
+
+
 def test_a_deleted_file_can_still_be_written_about(selection, index):
     index.files = [facts for facts in index.files if facts.path != "src/auth.py"]
     drafted = good_plan()

@@ -6,8 +6,13 @@ import pytest
 from pydantic import BaseModel
 
 from standup.core import llm
+from standup.core.llm import gemini_client
 from standup.core.llm.gemini_client import GeminiClient, _reason, _spoken
 from standup.errors import NotConfigured, Upstream
+
+
+async def _instant(*_args, **_kwargs) -> None:
+    """Skips the real backoff delay in tests that force a retry."""
 
 
 class Shape(BaseModel):
@@ -166,12 +171,37 @@ async def test_describe_image_sends_inline_data_alongside_the_prompt():
     assert parts[1] == {"text": "What is this?"}
 
 
-async def test_an_http_failure_becomes_one_of_our_errors():
+async def test_an_http_failure_becomes_one_of_our_errors(monkeypatch):
+    monkeypatch.setattr(gemini_client.asyncio, "sleep", _instant)
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": {"message": "quota exceeded"}})
 
     with pytest.raises(Upstream, match="quota exceeded"):
         await gemini(handler).text("go")
+
+
+async def test_a_transient_failure_is_retried_and_can_still_succeed(monkeypatch):
+    monkeypatch.setattr(gemini_client.asyncio, "sleep", _instant)
+    replies = iter([httpx.Response(503, text="overloaded"), spoke("ready")])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return next(replies)
+
+    assert await gemini(handler).text("go") == "ready"
+
+
+async def test_a_non_transient_failure_is_not_retried(monkeypatch):
+    monkeypatch.setattr(gemini_client.asyncio, "sleep", _instant)
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(400, json={"error": {"message": "bad request"}})
+
+    with pytest.raises(Upstream, match="bad request"):
+        await gemini(handler).text("go")
+    assert len(calls) == 1
 
 
 def test_an_answer_starved_by_thinking_is_a_failure_not_an_empty_string():

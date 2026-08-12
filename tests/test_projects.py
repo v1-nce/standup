@@ -60,6 +60,30 @@ def test_attaching_a_file_keeps_a_copy_inside_the_project(store, codebase):
     assert kept.parent == store.paths(project.id).context / resource.id
 
 
+def test_a_read_failure_while_attaching_a_lone_file_by_path_is_refused(store, tmp_path, monkeypatch):
+    project = store.create("My App")
+    doc = tmp_path / "notes.md"
+    doc.write_text("# Notes")
+
+    def boom(self):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(Path, "read_bytes", boom)
+    with pytest.raises(InvalidInput, match="could not be read"):
+        store.attach_path(project.id, str(doc))
+
+
+def test_a_resolve_failure_while_attaching_a_folder_is_refused(store, monkeypatch):
+    project = store.create("My App")
+
+    def boom(self):
+        raise OSError("too many levels of symbolic links")
+
+    monkeypatch.setattr(Path, "resolve", boom)
+    with pytest.raises(InvalidInput, match="could not be resolved"):
+        store.attach(project.id, "somewhere")
+
+
 def test_a_file_standup_cannot_read_is_refused(store):
     project = store.create("My App")
     with pytest.raises(InvalidInput, match="cannot read"):
@@ -94,6 +118,20 @@ def test_the_identical_document_is_not_attached_twice(store):
     store.attach_file(project.id, "notes.md", b"# Notes")
     with pytest.raises(InvalidInput, match="already attached"):
         store.attach_file(project.id, "notes.md", b"# Notes")
+
+
+def test_a_write_failure_while_attaching_is_refused_and_leaves_no_copy(store, monkeypatch):
+    project = store.create("My App")
+
+    def boom(self, data):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(Path, "write_bytes", boom)
+    with pytest.raises(InvalidInput, match="could not be saved"):
+        store.attach_file(project.id, "notes.md", b"# Notes")
+
+    assert store.get(project.id).resources == []
+    assert not any(store.paths(project.id).context.iterdir())
 
 
 def test_a_document_with_no_readable_text_is_refused_and_leaves_no_copy(store):

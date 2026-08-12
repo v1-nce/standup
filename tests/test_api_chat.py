@@ -1,5 +1,3 @@
-import asyncio
-
 import httpx
 import pytest
 
@@ -9,6 +7,8 @@ from standup.api.app import app
 from standup.core.agent import Turn
 from standup.core.agent.commands import Select, Write
 from standup.core.models import Scope, Slide
+from standup.errors import Upstream
+from tests.conftest import settled
 
 
 class Conversation:
@@ -48,15 +48,6 @@ def wired(store, monkeypatch):
     monkeypatch.setattr(projects_api, "get_store", lambda: store)
     monkeypatch.setattr(routes, "get_client", Conversation)
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-
-
-async def settled(client: httpx.AsyncClient, job_id: str) -> dict:
-    for _ in range(200):
-        job = (await client.get(f"/jobs/{job_id}")).json()
-        if job["state"] != "running":
-            return job
-        await asyncio.sleep(0.02)
-    raise AssertionError("the job never finished")
 
 
 async def test_one_message_produces_a_deck_and_a_reply(wired, project):
@@ -106,3 +97,24 @@ async def test_a_second_message_while_one_is_running_is_refused(wired):
 async def test_an_unknown_job_is_not_found(wired):
     async with wired as client:
         assert (await client.get("/jobs/nosuchjob")).status_code == 404
+
+
+class Flaky:
+    """A model that always fails partway through the turn."""
+
+    async def structured(self, prompt, schema, *, system=None, max_tokens=None):
+        raise Upstream("rate limited")
+
+
+async def test_a_failed_turn_still_closes_the_log_instead_of_orphaning_the_message(store, monkeypatch, project):
+    monkeypatch.setattr(projects_api, "get_store", lambda: store)
+    monkeypatch.setattr(routes, "get_client", Flaky)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        accepted = await client.post(f"/projects/{project.id}/chat", json={"content": "standup"})
+        job = await settled(client, accepted.json()["id"])
+        assert job["state"] == "failed"
+
+        history = (await client.get(f"/projects/{project.id}/chat")).json()
+        assert [m["role"] for m in history] == ["user", "assistant"]
+        assert "rate limited" in history[1]["content"]

@@ -75,6 +75,21 @@ def test_every_registered_signal_carries_a_weight():
     assert set(WEIGHTS) == set(SIGNALS)
 
 
+def test_affinity_credits_whichever_of_a_candidate_s_paths_carries_the_excerpt():
+    """_churn treats candidate.paths as the file list; _affinity used to only check candidate.id."""
+    candidate = Candidate(id="notes", title="notes", paths=["notes/one.md", "notes/two.md"])
+    two_docs = Index(
+        fingerprint="f",
+        built_at=TODAY,
+        files=[
+            FileFacts(path="notes/one.md", content_hash="h1"),
+            FileFacts(path="notes/two.md", content_hash="h2", excerpt="the billing rollout"),
+        ],
+    )
+    hits = SIGNALS["affinity"]([candidate], two_docs, Scope(keywords=["billing"], slide_budget=1))
+    assert hits.get("notes", 0.0) > 0
+
+
 def test_overlap_sees_a_shared_directory_and_a_shared_commit():
     here = Candidate(id="app/src/auth/login.py", title="a", commits=["x"])
     sibling = Candidate(id="app/src/auth/session.py", title="b", commits=["y"])
@@ -84,6 +99,20 @@ def test_overlap_sees_a_shared_directory_and_a_shared_commit():
     assert _overlap(here, sibling) == 1.0
     assert _overlap(here, stranger) == 0.0
     assert _overlap(here, co_committed) == 1.0
+
+
+def test_overlap_never_conflates_two_different_resources():
+    """Two root-level files from different resources used to both reduce to () and score 1.0."""
+    doc_a = Candidate(id="docA/notes.md", title="a")
+    doc_b = Candidate(id="docB/readme.md", title="b")
+    assert _overlap(doc_a, doc_b) == 0.0
+
+
+def test_overlap_needs_a_shared_prefix_not_just_a_same_depth_folder_name():
+    """These diverge at the very first directory; a positional zip used to still credit 'models/'."""
+    backend = Candidate(id="app/backend/models/user.py", title="a")
+    frontend = Candidate(id="app/frontend/models/product.py", title="b")
+    assert _overlap(backend, frontend) == 0.0
 
 
 @pytest.fixture

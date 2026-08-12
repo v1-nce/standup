@@ -8,6 +8,7 @@ from standup.core.index.code import module_path, parse, walk
 from standup.core.index.docs import emphasis, prose, read, readable
 from standup.core.index.graph import aliases, edges, rank
 from standup.core.index.history import commits
+from standup.core.models import FileFacts, Symbol
 from standup.errors import InvalidInput, NotConfigured
 from tests.conftest import TINY_PNG, docx_saying, pdf_saying, pptx_saying, xlsx_saying
 
@@ -144,6 +145,15 @@ def test_emphasis_follows_what_the_project_writes_about(repo):
     scores = emphasis(prose(repo), parse(repo))
     assert scores["src/hub.py"] == 1.0
     assert "src/leaf.py" not in scores
+
+
+def test_emphasis_credits_ruby_style_predicate_and_bang_identifiers():
+    """A bare \\w+ tally would drop the ? off "valid?", scoring it as never mentioned."""
+    facts = [
+        FileFacts(path="lib/user.rb", content_hash="h", symbols=[Symbol(name="valid?", kind="Method", line=1)])
+    ]
+    text = "The valid? method checks the record. See valid? again."
+    assert emphasis(text, facts)["lib/user.rb"] == 1.0
 
 
 def test_no_git_means_no_commits_not_a_failure(repo):
@@ -293,6 +303,18 @@ def test_a_corrupt_office_document_is_refused_rather_than_crashing(tmp_path, suf
     document.write_bytes(b"not a real office document")
     with pytest.raises(InvalidInput, match="could not be read"):
         read(document)
+
+
+def test_an_undecodable_source_file_is_refused_rather_than_silently_empty(tmp_path):
+    document = tmp_path / "notes.txt"
+    document.write_bytes(b"\xff\xfe not valid utf-8")
+    with pytest.raises(InvalidInput, match="could not be read"):
+        read(document)
+
+
+def test_prose_skips_an_unreadable_doc_file_rather_than_failing_the_whole_walk(repo):
+    (repo / "BROKEN.txt").write_bytes(b"\xff\xfe not valid utf-8")
+    assert "Router" in prose(repo)
 
 
 def test_an_image_is_described_by_the_configured_model(tmp_path, monkeypatch):

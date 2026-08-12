@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from standup.core import pipeline
@@ -83,6 +85,26 @@ def test_writing_slides_that_match_the_selection_is_accepted(store, project, ind
     assert [s.candidate_id for s in written.slides] == [
         e.candidate.id for e in deck.selection.chosen
     ]
+
+
+def test_writing_a_slide_for_something_not_chosen_is_refused(store, project, index):
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=1))
+    bogus = Slide(candidate_id="src/imaginary.py", title="Ghost", bullets=["x"])
+
+    with pytest.raises(NotFound, match="src/imaginary.py"):
+        pipeline.write(store, project.id, index, [bogus])
+    assert not (store.paths(project.id).deck / pipeline.PLAN_FILE).is_file()
+
+
+def test_rendering_an_empty_plan_is_refused_rather_than_producing_an_empty_deck(store, project, index):
+    """A SlidePlan(slides=[]) is truthy as a Pydantic model — render() must check its content."""
+    future = datetime(2099, 1, 1, tzinfo=UTC)
+    empty = pipeline.select(store, project.id, index, "nothing here", Scope(since=future, slide_budget=1))
+    assert empty.selection.chosen == []
+
+    pipeline.write(store, project.id, index, [])
+    with pytest.raises(InvalidInput, match="No slides"):
+        pipeline.render(store, project.id)
 
 
 def test_a_slide_naming_something_that_does_not_exist_is_rejected(store, project, index):

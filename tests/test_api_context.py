@@ -1,14 +1,17 @@
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from standup.api import jobs, routes
 from standup.api import projects as projects_api
 from standup.api.app import app
 from standup.core import pipeline
 from standup.core.models import Scope
 from standup.errors import NotFound
-from tests.conftest import pdf_saying
+from tests.conftest import Stuck, pdf_saying
+from tests.conftest import settled as await_settled
 
 
 @pytest.fixture
@@ -179,3 +182,34 @@ async def test_removing_context_takes_the_deck_it_produced_with_it(client, store
 
 def test_removing_something_that_was_never_attached_is_404(client, empty):
     assert client.delete(f"/projects/{empty}/context/nope").status_code == 404
+
+
+async def test_removing_context_is_refused_while_a_turn_is_running(store, monkeypatch, project):
+    monkeypatch.setattr(projects_api, "get_store", lambda: store)
+    stuck = Stuck()
+    monkeypatch.setattr(routes, "get_client", lambda: stuck)
+    resource_id = project.resources[0].id
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as async_client:
+        turn = await async_client.post(f"/projects/{project.id}/chat", json={"content": "go"})
+        assert turn.status_code == 202
+
+        refused = await async_client.delete(f"/projects/{project.id}/context/{resource_id}")
+        assert refused.status_code == 409
+
+        stuck.released.set()
+        job = await await_settled(async_client, turn.json()["id"])
+        assert job["state"] == "done"
+
+
+async def test_removing_context_is_refused_while_indexing_is_in_progress(store, monkeypatch, project):
+    """busy() must see indexing too, not only a chat turn — indexing runs unlocked in _LOOSE."""
+    monkeypatch.setattr(projects_api, "get_store", lambda: store)
+    resource_id = project.resources[0].id
+
+    async with (
+        jobs.indexing_lock(project.id),
+        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as async_client,
+    ):
+        refused = await async_client.delete(f"/projects/{project.id}/context/{resource_id}")
+        assert refused.status_code == 409

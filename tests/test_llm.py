@@ -66,6 +66,18 @@ async def test_text_joins_only_text_blocks():
     assert await client.text("hi") == "ab"
 
 
+async def test_an_answer_starved_by_thinking_is_a_failure_not_an_empty_string():
+    client = make_client()
+    attach(
+        client,
+        types.SimpleNamespace(
+            content=[types.SimpleNamespace(type="thinking")], stop_reason="max_tokens"
+        ),
+    )
+    with pytest.raises(Upstream, match="max_tokens"):
+        await client.text("hi")
+
+
 async def test_system_omitted_unless_given():
     client = make_client()
     fake = attach(client, types.SimpleNamespace(content=[text_block("ok")]))
