@@ -1,7 +1,9 @@
 """How much the project's own writing dwells on each file. Semantic signal that costs nothing."""
 
 import hashlib
+import re
 import zipfile
+from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -33,6 +35,7 @@ IMAGE_MEDIA_TYPES = {
 ATTACHABLE = DOC_SUFFIXES | {PDF_SUFFIX} | OFFICE_SUFFIXES | set(IMAGE_MEDIA_TYPES)
 MAX_DOC_CHARS = 4_000_000
 MIN_NAME_LENGTH = 5
+_WORD = re.compile(r"[\w?!-]+")
 
 IMAGE_PROMPT = (
     "Describe this image as evidence for a status update: what it shows, any text or data "
@@ -62,10 +65,8 @@ def read(path: Path) -> str:
         return _docx(path)
     if suffix in IMAGE_MEDIA_TYPES:
         return _image(path, suffix)
-    try:
+    with _reading(path.name, OSError, UnicodeDecodeError):
         return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
 
 
 @contextmanager
@@ -136,7 +137,10 @@ def prose(root: Path) -> str:
     for path in walk(root):
         if path.suffix.lower() not in DOC_SUFFIXES or size >= MAX_DOC_CHARS:
             continue
-        text = read(path)
+        try:
+            text = read(path)
+        except InvalidInput:
+            continue
         collected.append(text)
         size += len(text)
     return "\n".join(collected)
@@ -146,12 +150,13 @@ def emphasis(text: str, files: list[FileFacts]) -> dict[str, float]:
     if not text:
         return {}
     lowered = text.lower()
+    mentioned = Counter(_WORD.findall(text))
 
     rates = {}
     for facts in files:
         filename = Path(facts.path).name
         names = [s.name for s in facts.symbols if len(s.name) >= MIN_NAME_LENGTH]
-        mentions = sum(text.count(name) for name in names)
+        mentions = sum(mentioned[name] for name in names)
         if len(filename) >= MIN_NAME_LENGTH:
             names.append(filename)
             mentions += lowered.count(filename.lower())

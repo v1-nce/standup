@@ -1,3 +1,4 @@
+import asyncio
 from functools import lru_cache
 
 from fastapi import APIRouter
@@ -59,13 +60,21 @@ def read_chat(project_id: str) -> list[ChatMessage]:
     return _chat(project_id).read()
 
 
-async def _turn(client: ModelClient, project_id: str, log: ChatLog) -> None:
-    log.append("assistant", await agent.converse(client, get_store(), project_id, log.read()))
+async def _turn(client: ModelClient, project_id: str, log: ChatLog, content: str) -> None:
+    """Appends the user's message itself, so a turn `jobs.start` refuses never touches the log.
+    A failure past that point still closes the turn, so the log never ends on a question nobody
+    answered."""
+    history = await asyncio.to_thread(log.append_and_read, "user", content)
+    try:
+        reply = await agent.converse(client, get_store(), project_id, history)
+    except Exception as failure:
+        await asyncio.to_thread(log.append, "assistant", f"Something went wrong: {failure}")
+        raise
+    await asyncio.to_thread(log.append, "assistant", reply)
 
 
 @router.post("/{project_id}/chat", status_code=202)
 async def send_message(project_id: str, body: ChatSend) -> jobs.Job:
-    log = _chat(project_id)
+    log = await asyncio.to_thread(_chat, project_id)
     client = routes.get_client()
-    log.append("user", body.content)
-    return jobs.start("thinking", _turn(client, project_id, log), lock=project_id)
+    return jobs.start("thinking", _turn(client, project_id, log, body.content), lock=project_id)

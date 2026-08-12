@@ -60,7 +60,7 @@ def _affinity(candidates: list[Candidate], index: Index, scope: Scope) -> dict[s
         haystack = " ".join(
             [
                 candidate.id,
-                excerpts.get(candidate.id, ""),
+                *(excerpts.get(path, "") for path in candidate.paths),
                 *(c.message for c in _commits(candidate, by_sha)),
             ]
         ).lower()

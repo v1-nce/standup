@@ -12,7 +12,7 @@ _CALL = re.compile(r"\b([A-Za-z_]\w*)\s*\(\)")
 def _named_files(text: str, suffixes: set[str]) -> set[str]:
     """Only tokens carrying an extension the project actually uses. `e.g.` is prose, not a file."""
     return {
-        token.strip("./")
+        token.removeprefix("./")
         for token in _TOKEN.findall(text)
         if PurePosixPath(token).suffix in suffixes
     }
@@ -34,14 +34,15 @@ def problems(plan: SlidePlan, selection: Selection, index: Index) -> list[str]:
     paths = {facts.path for facts in index.files}
     paths |= {path for commit in index.commits for path in commit.changes}
     suffixes = {PurePosixPath(path).suffix for path in paths} - {""}
+    candidates = {entry.candidate.id: entry.candidate for entry in [*selection.chosen, *selection.cut]}
 
     for slide in plan.slides:
-        home = f"{slide.candidate_id.split('/', 1)[0]}/"
-        theirs = {path for path in paths if path.startswith(home)}
+        candidate = candidates.get(slide.candidate_id)
+        theirs = set(candidate.paths) if candidate else set()
         symbols = {
             symbol.name
             for facts in index.files
-            if facts.path.startswith(home)
+            if candidate and facts.path in theirs
             for symbol in facts.symbols
         }
 

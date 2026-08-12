@@ -1,6 +1,7 @@
 """Work that outlives its request. In-process, because the state of record is already on disk."""
 
 import asyncio
+from collections import defaultdict
 from collections.abc import Coroutine
 from typing import Literal
 from uuid import uuid4
@@ -23,6 +24,7 @@ class Job(BaseModel):
 _JOBS: dict[str, Job] = {}
 _LIVE: dict[str, asyncio.Task[None]] = {}
 _LOOSE: set[asyncio.Task[None]] = set()
+_INDEXING: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 
 async def _run(job: Job, work: Coroutine[None, None, None]) -> None:
@@ -52,6 +54,19 @@ def start(step: str, work: Coroutine[None, None, None], *, lock: str | None = No
         _LOOSE.add(task)
         task.add_done_callback(_LOOSE.discard)
     return job
+
+
+def indexing_lock(key: str) -> asyncio.Lock:
+    """The lock indexing serialises on — a second attach mid-index queues rather than 409s.
+    `busy()` also reads it, so a delete or selection edit mid-index is refused instead of racing."""
+    return _INDEXING[key]
+
+
+def busy(key: str) -> bool:
+    """Whether a job is running for this key, or indexing is in progress — the same check `start`
+    makes before refusing, plus indexing's own serialising lock."""
+    running = _LIVE.get(key)
+    return (running is not None and not running.done()) or _INDEXING[key].locked()
 
 
 @router.get("/{job_id}")

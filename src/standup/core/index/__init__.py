@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from standup.core.index.code import parse, relative, walk
-from standup.core.index.docs import emphasis, prose, read
+from standup.core.index.docs import MAX_DOC_CHARS, emphasis, prose, read
 from standup.core.index.graph import aliases, rank
 from standup.core.index.history import commits
 from standup.core.models import Commit, Facts, FileFacts, Index
@@ -65,7 +65,7 @@ def _document(path: Path) -> Facts:
         fingerprint=fingerprint(path),
         built_at=datetime.now(UTC),
         files=[facts.model_copy(update={"excerpt": text[:EXCERPT_CHARS]})],
-        text=text,
+        text=text[:MAX_DOC_CHARS],
     )
 
 

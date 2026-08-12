@@ -32,12 +32,17 @@ def _digest(path: Path) -> str:
         return ""
 
 
+def _unreadable(action: str, target: str, failure: OSError) -> InvalidInput:
+    return InvalidInput(f"{target} could not be {action}: {failure}")
+
+
 class ProjectStore:
     """Projects on disk. One directory per project, the directory is the record."""
 
     def __init__(self, root: Path) -> None:
         self._root = root
         self._guard = threading.RLock()
+        self._digests: dict[str, str] = {}
 
     def paths(self, project_id: str) -> ProjectPaths:
         root = self._root / project_id
@@ -68,12 +73,19 @@ class ProjectStore:
         one is, so the two ways of adding a file agree."""
         chosen = Path(location).expanduser()
         if chosen.is_file():
-            return self.attach_file(project_id, chosen.name, chosen.read_bytes())
+            try:
+                data = chosen.read_bytes()
+            except OSError as failure:
+                raise _unreadable("read", location, failure) from failure
+            return self.attach_file(project_id, chosen.name, data)
         return self.attach(project_id, location)
 
     def attach(self, project_id: str, location: str) -> Resource:
         """A folder on this machine. The path is recorded; nothing is copied."""
-        folder = Path(location).expanduser().resolve()
+        try:
+            folder = Path(location).expanduser().resolve()
+        except OSError as failure:
+            raise _unreadable("resolved", location, failure) from failure
         if not folder.is_dir():
             raise InvalidInput(f"{location} is not a directory")
 
@@ -105,7 +117,9 @@ class ProjectStore:
         project = self.get(project_id)
         arriving = hashlib.sha256(data).hexdigest()
         if any(
-            held.kind is ResourceKind.FILE and held.name == name and _digest(Path(held.location)) == arriving
+            held.kind is ResourceKind.FILE
+            and held.name == name
+            and self._digest_of(held.id, Path(held.location)) == arriving
             for held in project.resources
         ):
             raise InvalidInput(f"{name} is already attached")
@@ -114,7 +128,11 @@ class ProjectStore:
         home = self.paths(project_id).context / resource_id
         home.mkdir(parents=True)
         kept = home / name
-        kept.write_bytes(data)
+        try:
+            kept.write_bytes(data)
+        except OSError as failure:
+            shutil.rmtree(home, ignore_errors=True)
+            raise _unreadable("saved", name, failure) from failure
 
         try:
             if not read(kept).strip():
@@ -123,6 +141,8 @@ class ProjectStore:
             shutil.rmtree(home, ignore_errors=True)
             raise
 
+        with self._guard:
+            self._digests[resource_id] = arriving
         return self._keep(
             project_id,
             Resource(
@@ -134,6 +154,18 @@ class ProjectStore:
             ),
         )
 
+    def _digest_of(self, resource_id: str, location: Path) -> str:
+        """Hashed once per resource per process, not once per resource per attach. The hash
+        itself runs outside the guard — it's a file read, not the quick state update the guard
+        is for — so one slow hash doesn't stall every other project's request."""
+        with self._guard:
+            cached = self._digests.get(resource_id)
+        if cached is not None:
+            return cached
+        computed = _digest(location)
+        with self._guard:
+            return self._digests.setdefault(resource_id, computed)
+
     def detach(self, project_id: str, resource_id: str) -> None:
         """The resource, its uploaded copy, and everything derived from it."""
         with self._guard:
@@ -142,6 +174,7 @@ class ProjectStore:
             if len(held) == len(project.resources):
                 raise NotFound(f"No resource {resource_id}")
             self._write(self._root / project_id, project.model_copy(update={"resources": held}))
+            self._digests.pop(resource_id, None)
 
         paths = self.paths(project_id)
         shutil.rmtree(paths.context / resource_id, ignore_errors=True)
@@ -182,7 +215,10 @@ class ProjectStore:
 
     def _write(self, root: Path, project: Project) -> None:
         with self._guard:
-            (root / "project.json").write_text(project.model_dump_json(indent=2), encoding="utf-8")
+            try:
+                (root / "project.json").write_text(project.model_dump_json(indent=2), encoding="utf-8")
+            except OSError as failure:
+                raise _unreadable("saved", project.name, failure) from failure
 
     def _read(self, root: Path) -> Project | None:
         record = root / "project.json"

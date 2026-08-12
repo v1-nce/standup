@@ -135,11 +135,15 @@ def edit(store: ProjectStore, project_id: str, keep: list[str]) -> Deck:
 def write(store: ProjectStore, project_id: str, index: Index, slides: list[Slide]) -> Deck:
     """Slides merged onto whatever is written, then checked. One fault rejects the whole merge."""
     chosen = load(store, project_id)
+    wanted = [entry.candidate.id for entry in chosen.chosen]
+
+    unknown = [slide.candidate_id for slide in slides if slide.candidate_id not in wanted]
+    if unknown:
+        raise NotFound(f"Not in this selection: {unknown}")
+
     existing = _plan(store, project_id)
     by_id = {slide.candidate_id: slide for slide in (existing.slides if existing else [])}
     by_id.update({slide.candidate_id: slide for slide in slides})
-
-    wanted = [entry.candidate.id for entry in chosen.chosen]
     merged = SlidePlan(slides=[by_id[item] for item in wanted if item in by_id])
 
     faults = problems(merged, chosen, index)
@@ -152,6 +156,6 @@ def write(store: ProjectStore, project_id: str, index: Index, slides: list[Slide
 
 def render(store: ProjectStore, project_id: str) -> Path:
     written = _plan(store, project_id)
-    if not written:
+    if not written or not written.slides:
         raise InvalidInput("No slides have been written yet")
     return render_deck(written, _room(store, project_id) / DECK_FILE)
