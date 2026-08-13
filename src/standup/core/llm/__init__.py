@@ -18,6 +18,9 @@ PROVIDERS = {"anthropic": LLMClient, "gemini": GeminiClient}
 class ModelClient(Protocol):
     """What every provider offers. Add one by writing it and listing it in PROVIDERS."""
 
+    input_tokens: int
+    output_tokens: int
+
     async def text(
         self, prompt: str, *, system: str | None = None, max_tokens: int | None = None
     ) -> str: ...
