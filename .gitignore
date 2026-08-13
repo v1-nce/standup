@@ -2,6 +2,9 @@
 .env*
 !.env.example
 
+# Local benchmark resources — real machine-specific paths, never exposed
+benchmarks/test_set.py
+
 # Environments
 .venv/
 venv/

@@ -59,6 +59,8 @@ class GeminiClient:
         self._model = model
         self._max_tokens = max_tokens
         self._semaphore = asyncio.Semaphore(max_concurrency)
+        self.input_tokens = 0
+        self.output_tokens = 0
         self._http = httpx.AsyncClient(
             base_url=BASE_URL, timeout=timeout, headers={"x-goog-api-key": api_key}
         )
@@ -139,7 +141,11 @@ class GeminiClient:
             body["systemInstruction"] = {"parts": [{"text": system}]}
 
         response = await self._post(body)
-        return _spoken(response.json())
+        payload = response.json()
+        usage = payload.get("usageMetadata", {})
+        self.input_tokens += usage.get("promptTokenCount", 0)
+        self.output_tokens += usage.get("candidatesTokenCount", 0)
+        return _spoken(payload)
 
     async def _post(self, body: dict[str, Any]) -> httpx.Response:
         """Backs off a transient failure the way the Anthropic SDK already retries for us. The

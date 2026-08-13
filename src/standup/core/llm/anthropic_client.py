@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import Any, TypeVar
 
 import anthropic
+from anthropic.types import Usage
 from pydantic import BaseModel
 
 from standup.config import settings
@@ -44,6 +45,8 @@ class LLMClient:
         self._model = model
         self._max_tokens = max_tokens
         self._semaphore = asyncio.Semaphore(max_concurrency)
+        self.input_tokens = 0
+        self.output_tokens = 0
 
     @staticmethod
     def configured() -> bool:
@@ -79,6 +82,7 @@ class LLMClient:
                     **self._request(prompt, system, max_tokens),
                     output_format=schema,
                 )
+        self._tally(response.usage)
         return response.parsed_output
 
     async def describe_image(
@@ -108,10 +112,15 @@ class LLMClient:
                 response = await self._client.messages.create(
                     **self._request(content, system, max_tokens)
                 )
+        self._tally(response.usage)
         said = "".join(block.text for block in response.content if block.type == "text")
         if not said:
             raise Upstream(f"Claude said nothing, stopping on {response.stop_reason}")
         return said
+
+    def _tally(self, usage: Usage) -> None:
+        self.input_tokens += usage.input_tokens
+        self.output_tokens += usage.output_tokens
 
     def _request(
         self, content: str | list[dict[str, Any]], system: str | None, max_tokens: int | None
