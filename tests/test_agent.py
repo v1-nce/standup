@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from standup.core import agent, pipeline
 from standup.core.agent import Turn
 from standup.core.agent.commands import Keep, Select, Write, apply
-from standup.core.models import ChatMessage, Scope, Slide
+from standup.core.models import ChatMessage, FileFacts, Index, Scope, Slide
 
 TODAY = datetime(2026, 8, 3, tzinfo=UTC)
 
@@ -73,6 +73,70 @@ async def test_a_turn_with_no_commands_is_one_call_and_changes_nothing(store, pr
     client = StubClient(Turn(reply="Nothing to do."))
     assert await talk(client, store, project.id, "thanks") == "Nothing to do."
     assert len(client.prompts) == 1
+
+
+async def test_a_turn_can_answer_from_an_attached_file_before_a_deck_exists(store, monkeypatch):
+    made = store.create("Images")
+    described = Index(
+        fingerprint="i",
+        built_at=TODAY,
+        files=[
+            FileFacts(
+                path="spike-png/spike.png",
+                content_hash="h",
+                excerpt="A chart with a sharp spike near the end.",
+            )
+        ],
+    )
+    async def indexed(store, project_id):
+        return described
+
+    monkeypatch.setattr(agent.pipeline, "indexed", indexed)
+
+    client = StubClient(Turn(reply="It shows a chart with a sharp spike near the end."))
+    await talk(client, store, made.id, "what is in spike.png?")
+
+    assert "spike-png/spike.png" in client.prompts[0]
+    assert "sharp spike near the end" in client.prompts[0]
+
+
+async def test_indexed_context_is_relevant_to_the_question(store, monkeypatch):
+    made = store.create("Docs")
+    described = Index(
+        fingerprint="i",
+        built_at=TODAY,
+        files=[
+            FileFacts(
+                path="resume-pdf/resume.pdf",
+                content_hash="r",
+                excerpt="Vincent works on backend systems.",
+            ),
+            FileFacts(
+                path="spike-png/spike.png",
+                content_hash="s",
+                excerpt="A chart with a sharp spike near the end.",
+            ),
+        ],
+    )
+
+    async def indexed(store, project_id):
+        return described
+
+    monkeypatch.setattr(agent.pipeline, "indexed", indexed)
+
+    client = StubClient(Turn(reply="It shows a chart with a sharp spike near the end."))
+    await talk(client, store, made.id, "what is in spike.png?")
+
+    assert "spike-png/spike.png" in client.prompts[0]
+    assert "resume-pdf/resume.pdf" not in client.prompts[0]
+
+
+async def test_the_system_distinguishes_chat_from_deck_changes(store, project):
+    client = StubClient(Turn(reply="Sure."))
+    await talk(client, store, project.id, "what files are attached?")
+
+    assert "Only use commands when the person asks to create or change the deck" in client.system
+    assert "folder: repo" in client.prompts[0]
 
 
 async def test_the_agent_builds_a_deck_then_reports_on_it(store, project, index):

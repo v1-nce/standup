@@ -1,5 +1,6 @@
 """The turn: the model reads the conversation, changes the deck, and answers. One loop, one caller."""
 
+import re
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
@@ -13,6 +14,11 @@ from standup.core.projects import ProjectStore
 from standup.errors import NotFound
 
 MAX_ROUNDS = 5
+MAX_PROMPT_EXCERPTS = 8
+PROMPT_EXCERPT_CHARS = 800
+MAX_CONTEXT_RESOURCES = 20
+_TERM = re.compile(r"[a-z0-9_.-]{3,}")
+_BORING_TERMS = {"about", "attached", "document", "file", "files", "tell", "what", "with"}
 
 SYSTEM = """You are Standup. You build and improve one slide deck per project by talking to the
 person who will present it, and you answer them the way a colleague would.
@@ -20,6 +26,8 @@ person who will present it, and you answer them the way a colleague would.
 Put any change to the deck in `commands`, and leave `commands` empty once the deck needs no more
 work - that ends the turn. `reply` is what the person reads, so write it only on the round you
 leave `commands` empty; while you are still working, leave `reply` empty too.
+Only use commands when the person asks to create or change the deck. For ordinary questions about
+the project or attached context, answer directly with no commands.
 
 You do not decide what matters. Ranking is computed from the repository itself: what changed,
 what depends on what, what the project's own writing stresses. Your job is to set the search,
@@ -88,6 +96,36 @@ def _deck_state(deck: Deck | None) -> str:
     return "\n".join(lines)
 
 
+def _terms(history: list[ChatMessage]) -> set[str]:
+    latest = next((m.content for m in reversed(history) if m.role == "user"), "")
+    return {term for term in _TERM.findall(latest.lower()) if term not in _BORING_TERMS}
+
+
+def _indexed_excerpts(index: Index | None, history: list[ChatMessage]) -> str:
+    if not index:
+        return ""
+    terms = _terms(history)
+    blocks = []
+    for facts in index.files:
+        if not facts.excerpt:
+            continue
+        haystack = f"{facts.path} {facts.excerpt}".lower()
+        if terms and not any(term in haystack for term in terms):
+            continue
+        text = " ".join(facts.excerpt.split())[:PROMPT_EXCERPT_CHARS]
+        blocks.append(f"id: {facts.path}\ntext: {text}")
+        if len(blocks) == MAX_PROMPT_EXCERPTS:
+            break
+    return "\n\n".join(blocks)
+
+
+def _resources(store: ProjectStore, project_id: str) -> str:
+    return "\n".join(
+        f"{resource.kind.value}: {resource.name}"
+        for resource in store.get(project_id).resources[:MAX_CONTEXT_RESOURCES]
+    )
+
+
 def _prompt(
     store: ProjectStore,
     project_id: str,
@@ -114,7 +152,9 @@ def _prompt(
     said = "\n".join(f"{message.role}: {message.content}" for message in history)
     blocks = [
         f"{facts}. Today is {today.date().isoformat()}.",
+        f"CONTEXT RESOURCES\n{_resources(store, project_id)}",
         _deck_state(deck),
+        f"RELEVANT INDEXED EXCERPTS\n{_indexed_excerpts(index, history)}",
         f"EVIDENCE\n{evidence(deck.selection, index) if deck and index else ''}",
         f"CONVERSATION\n{said}",
     ]
