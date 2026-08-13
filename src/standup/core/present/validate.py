@@ -27,7 +27,7 @@ def problems(plan: SlidePlan, selection: Selection, index: Index) -> list[str]:
     faults = []
 
     expected = [entry.candidate.id for entry in selection.chosen]
-    actual = [slide.candidate_id for slide in plan.slides]
+    actual = [slide.candidate_id for slide in plan.slides if not slide.free]
     if actual != expected:
         faults.append(f"the slides must be exactly {expected}, in that order, but were {actual}")
 
@@ -35,7 +35,9 @@ def problems(plan: SlidePlan, selection: Selection, index: Index) -> list[str]:
 
 
 def slide_problems(slides: list[Slide], selection: Selection, index: Index) -> list[str]:
-    """Grounding faults for the slides being written, without requiring a complete plan."""
+    """Grounding faults for the slides being written, without requiring a complete plan. A free
+    slide carries no evidence to check by design — the caller already guaranteed its id doesn't
+    collide with a real candidate."""
     faults = []
 
     paths = {facts.path for facts in index.files}
@@ -44,6 +46,8 @@ def slide_problems(slides: list[Slide], selection: Selection, index: Index) -> l
     candidates = {entry.candidate.id: entry.candidate for entry in selection.chosen}
 
     for slide in slides:
+        if slide.free:
+            continue
         candidate = candidates.get(slide.candidate_id)
         theirs = set(candidate.paths) if candidate else set()
         symbols = {

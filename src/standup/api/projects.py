@@ -5,7 +5,7 @@ from fastapi import APIRouter
 
 from standup.api import jobs, routes
 from standup.config import settings
-from standup.core import agent
+from standup.core import agent, pipeline
 from standup.core.llm import ModelClient
 from standup.core.models import (
     ChatMessage,
@@ -56,6 +56,8 @@ def delete_project(project_id: str) -> None:
     if jobs.busy(project_id):
         raise Busy(f"{project_id} is already working")
     get_store().delete(project_id)
+    pipeline.evict(project_id)
+    jobs.evict(project_id)
 
 
 @router.get("/{project_id}/chat")

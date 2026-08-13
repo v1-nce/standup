@@ -86,9 +86,16 @@ def ensure(root: Path, facts_dir: Path) -> Facts:
 
 
 def forget(facts_dir: Path) -> None:
-    """Drop what was derived from a resource. Waits for a build rather than racing it."""
+    """Drop what was derived from a resource. Waits for a build rather than racing it.
+
+    Resource ids are uuid-suffixed and unique per attach, so this exact `facts_dir` is never
+    reused once forgotten — popping its `_BUILDS` entry after releasing the lock can't race a
+    future legitimate caller of the same path.
+    """
     with _lock_on(facts_dir):
         shutil.rmtree(facts_dir, ignore_errors=True)
+    with _BUILDS_GUARD:
+        _BUILDS.pop(facts_dir, None)
 
 
 def merged(parts: Iterable[tuple[str, Facts]]) -> Index:
@@ -127,7 +134,7 @@ def merged(parts: Iterable[tuple[str, Facts]]) -> Index:
         commits=history,
         history_complete=complete,
         rank=rank(files, declared),
-        emphasis=emphasis("\n".join(prose_of_all), files),
+        emphasis=emphasis("\n".join(prose_of_all)[:MAX_DOC_CHARS], files),
     )
 
 

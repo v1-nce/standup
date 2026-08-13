@@ -87,6 +87,7 @@ class Selection(BaseModel):
 
 class Slide(BaseModel):
     candidate_id: str
+    free: bool = False
     title: str
     bullets: list[str] = []
 

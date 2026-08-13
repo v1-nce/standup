@@ -18,7 +18,11 @@ export function Slides({ deck }: { deck: Deck | null }) {
         <div key={showing?.candidate_id ?? "empty"} className="rise w-full max-w-3xl">
           <SlideFace
             bullets={showing?.bullets ?? []}
-            label={showing ? `Slide ${active + 1} / ${slides.length}` : "No deck yet"}
+            label={
+              showing
+                ? `Slide ${active + 1} / ${slides.length}` + (showing.free ? " · custom" : "")
+                : "No deck yet"
+            }
             title={showing?.title ?? "Ask for one in the chat"}
           />
         </div>
@@ -44,7 +48,7 @@ export function Slides({ deck }: { deck: Deck | null }) {
             >
               <SlideFace
                 bullets={slide.bullets}
-                label={`Slide ${index + 1} / ${slides.length}`}
+                label={`Slide ${index + 1} / ${slides.length}` + (slide.free ? " · custom" : "")}
                 title={slide.title}
               />
             </div>

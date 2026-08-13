@@ -36,6 +36,7 @@ src/standup/web/
 docs/
 CLAUDE.md
 AGENTS.md
+.codex
 
 .DS_Store
 Thumbs.db

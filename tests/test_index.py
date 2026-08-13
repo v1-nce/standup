@@ -1,4 +1,5 @@
 import subprocess
+from datetime import UTC, datetime
 
 import pytest
 
@@ -8,7 +9,7 @@ from standup.core.index.code import module_path, parse, walk
 from standup.core.index.docs import emphasis, prose, read, readable
 from standup.core.index.graph import aliases, edges, rank
 from standup.core.index.history import commits
-from standup.core.models import FileFacts, Symbol
+from standup.core.models import Facts, FileFacts, Symbol
 from standup.errors import InvalidInput, NotConfigured
 from tests.conftest import TINY_PNG, docx_saying, pdf_saying, pptx_saying, xlsx_saying
 
@@ -166,6 +167,28 @@ def test_emphasis_credits_cpp_operator_overload_identifiers():
     ]
     text = "The operator+ overload adds two vectors. See operator+ for the implementation."
     assert emphasis(text, facts)["src/vector.cpp"] == 1.0
+
+
+def test_merged_caps_the_joined_prose_across_resources(monkeypatch):
+    """Each resource's own text is already capped individually; the join across resources must
+    not let a project with several large resources hand emphasis() an uncapped string."""
+    monkeypatch.setattr(index, "MAX_DOC_CHARS", 10)
+    seen = {}
+
+    def spy(text, files):
+        seen["text"] = text
+        return {}
+
+    monkeypatch.setattr(index, "emphasis", spy)
+
+    now = datetime.now(UTC)
+    parts = [
+        ("a", Facts(fingerprint="a", built_at=now, text="A" * 10)),
+        ("b", Facts(fingerprint="b", built_at=now, text="B" * 10)),
+    ]
+    index.merged(parts)
+
+    assert len(seen["text"]) <= 10
 
 
 def test_no_git_means_no_commits_not_a_failure(repo):

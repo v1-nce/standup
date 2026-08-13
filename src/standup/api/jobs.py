@@ -23,11 +23,29 @@ class Job(BaseModel):
 
 
 _JOBS: dict[str, Job] = {}
+_JOBS_MAX = 200
 _LIVE: dict[str, asyncio.Task[None]] = {}
 _LOOSE: set[asyncio.Task[None]] = set()
 _STARTING: defaultdict[str, int] = defaultdict(int)
 _INDEXING: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 _PENDING_INDEXING: defaultdict[str, int] = defaultdict(int)
+
+
+def _remember(job: Job) -> None:
+    """Bounded like docs._DESCRIBED — evicts the oldest already-finished job, never a running one."""
+    _JOBS[job.id] = job
+    if len(_JOBS) > _JOBS_MAX:
+        stale = next((id_ for id_, other in _JOBS.items() if other.state != "running"), None)
+        if stale:
+            del _JOBS[stale]
+
+
+def evict(project_id: str) -> None:
+    """Drop a deleted project's in-memory bookkeeping."""
+    _LIVE.pop(project_id, None)
+    _STARTING.pop(project_id, None)
+    _INDEXING.pop(project_id, None)
+    _PENDING_INDEXING.pop(project_id, None)
 
 
 async def _run(job: Job, work: Coroutine[None, None, None]) -> None:
@@ -49,7 +67,7 @@ def start(step: str, work: Coroutine[None, None, None], *, lock: str | None = No
         raise Busy(f"{lock} is already working")
 
     job = Job(id=uuid4().hex[:12], state="running", step=step)
-    _JOBS[job.id] = job
+    _remember(job)
     task = asyncio.create_task(_run(job, work))
     if lock:
         _LIVE[lock] = task

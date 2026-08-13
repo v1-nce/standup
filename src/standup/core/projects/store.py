@@ -202,7 +202,14 @@ class ProjectStore:
         return project
 
     def delete(self, project_id: str) -> None:
-        self.get(project_id)
+        """Every resource's own cleanup, the same as `detach` gives one, batched over all of them."""
+        project = self.get(project_id)
+        paths = self.paths(project_id)
+        with self._guard:
+            for resource in project.resources:
+                self._digests.pop(resource.id, None)
+        for resource in project.resources:
+            forget(paths.index / resource.id)
         shutil.rmtree(self._root / project_id)
 
     def _keep(self, project_id: str, resource: Resource) -> Resource:

@@ -17,7 +17,7 @@ from standup.core.models import (
     Symbol,
 )
 from standup.core.present import build, evidence, revise
-from standup.core.present.validate import problems
+from standup.core.present.validate import problems, slide_problems
 from standup.errors import InvalidInput
 
 TODAY = datetime(2026, 8, 3, tzinfo=UTC)
@@ -187,17 +187,48 @@ def test_a_deleted_file_can_still_be_written_about(selection, index):
 
 def test_removing_and_reordering_a_selection_costs_no_model_call(selection):
     selection.chosen.reverse()
-    revised = revise(good_plan(), selection)
+    order = [entry.candidate.id for entry in selection.chosen]
+    revised = revise(good_plan(), order)
     assert [s.candidate_id for s in revised.slides] == ["src/billing.py", "src/auth.py"]
 
     selection.chosen.pop()
-    assert [s.candidate_id for s in revise(good_plan(), selection).slides] == ["src/billing.py"]
+    order = [entry.candidate.id for entry in selection.chosen]
+    assert [s.candidate_id for s in revise(good_plan(), order).slides] == ["src/billing.py"]
 
 
 def test_restoring_a_cut_item_needs_a_slide_written_for_it(selection):
     selection.chosen.append(selection.cut[0])
+    order = [entry.candidate.id for entry in selection.chosen]
     with pytest.raises(InvalidInput, match="docs/notes.md"):
-        revise(good_plan(), selection)
+        revise(good_plan(), order)
+
+
+def test_revise_interleaves_a_free_slide_wherever_the_order_places_it(selection):
+    """Free ids ride along with candidate ids in one order - `revise` doesn't treat them specially."""
+    plan = good_plan()
+    plan.slides.insert(0, Slide(candidate_id="title", free=True, title="Standup"))
+    order = ["title", "src/billing.py", "src/auth.py"]
+
+    revised = revise(plan, order)
+    assert [s.candidate_id for s in revised.slides] == order
+
+
+def test_revise_rejects_a_free_id_with_no_slide_written_yet(selection):
+    order = [entry.candidate.id for entry in selection.chosen] + ["title"]
+    with pytest.raises(InvalidInput, match="title"):
+        revise(good_plan(), order)
+
+
+def test_a_free_slide_is_never_checked_against_the_evidence(selection, index):
+    """No candidate backs a free slide, so nothing about it can be fabricated in the first place."""
+    free = Slide(candidate_id="title", free=True, title="FINNATO", bullets=["src/nonexistent.py"])
+    assert slide_problems([free], selection, index) == []
+
+
+def test_a_free_slide_does_not_break_the_completeness_check(selection, index):
+    plan = good_plan()
+    plan.slides.insert(0, Slide(candidate_id="title", free=True, title="Standup"))
+    assert problems(plan, selection, index) == []
 
 
 def test_the_deck_opens_with_the_slides_it_was_given(tmp_path):

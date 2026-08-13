@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from standup.core import index as index_module
 from standup.core import pipeline
 from standup.core.gather import candidates
 from standup.core.models import Scope, Slide
@@ -73,6 +74,27 @@ def test_an_edit_blocks_while_the_projects_lock_is_held(store, project, index):
 
     thread.join(timeout=2)
     assert not thread.is_alive()
+
+
+async def test_the_merged_index_is_cached_until_a_resource_actually_changes(store, project, repo, monkeypatch):
+    calls = []
+    real_merged = index_module.merged
+
+    def spy(parts):
+        calls.append(1)
+        return real_merged(parts)
+
+    monkeypatch.setattr(index_module, "merged", spy)
+
+    first = await pipeline.indexed(store, project.id)
+    second = await pipeline.indexed(store, project.id)
+    assert len(calls) == 1
+    assert first == second
+
+    (repo / "src" / "new_file.py").write_text("def added():\n    pass\n")
+    third = await pipeline.indexed(store, project.id)
+    assert len(calls) == 2
+    assert third != first
 
 
 def test_read_blocks_while_the_projects_lock_is_held(store, project, index):
@@ -161,6 +183,68 @@ def test_writing_a_slide_for_something_not_chosen_is_refused(store, project, ind
     with pytest.raises(NotFound, match="src/imaginary.py"):
         pipeline.write(store, project.id, index, [bogus])
     assert not (store.paths(project.id).deck / pipeline.PLAN_FILE).is_file()
+
+
+def test_a_free_slide_needs_no_candidate(store, project, index):
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    free = Slide(candidate_id="title", free=True, title="Standup", bullets=[])
+
+    written = pipeline.write(store, project.id, index, [free])
+    assert written.slides == [free]
+
+
+def test_a_new_free_slide_lands_after_the_evidence_slides(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    pipeline.write(store, project.id, index, slides_for(deck))
+    free = Slide(candidate_id="title", free=True, title="Standup")
+
+    written = pipeline.write(store, project.id, index, [free])
+    assert written.slides[-1] == free
+    assert [s.candidate_id for s in written.slides[:-1]] == [
+        e.candidate.id for e in deck.selection.chosen
+    ]
+
+
+def test_keep_can_interleave_a_free_slide_among_evidence_slides(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    pipeline.write(store, project.id, index, slides_for(deck))
+    pipeline.write(store, project.id, index, [Slide(candidate_id="title", free=True, title="Standup")])
+
+    order = ["title", *[e.candidate.id for e in deck.selection.chosen]]
+    reordered = pipeline.edit(store, project.id, order)
+    assert [s.candidate_id for s in reordered.slides] == order
+    assert pipeline.render(store, project.id).is_file()
+
+
+def test_keep_without_the_free_id_drops_it(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    pipeline.write(store, project.id, index, slides_for(deck))
+    pipeline.write(store, project.id, index, [Slide(candidate_id="title", free=True, title="Standup")])
+
+    kept = [e.candidate.id for e in deck.selection.chosen]
+    reordered = pipeline.edit(store, project.id, kept)
+    assert "title" not in [s.candidate_id for s in reordered.slides]
+
+
+def test_a_free_flag_on_a_real_candidate_is_refused(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    real_id = deck.selection.chosen[0].candidate.id
+    sneaky = Slide(candidate_id=real_id, free=True, title="Sneaky", bullets=["src/imaginary.py"])
+
+    with pytest.raises(InvalidInput, match="cannot be free"):
+        pipeline.write(store, project.id, index, [sneaky])
+
+
+def test_a_free_flag_on_a_cut_candidate_is_also_refused(store, project, index):
+    """Not just chosen — a free slide squatting on a cut candidate's id would corrupt it if
+    that candidate were later restored with `keep`."""
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=1))
+    assert deck.selection.cut
+    cut_id = deck.selection.cut[0].candidate.id
+    sneaky = Slide(candidate_id=cut_id, free=True, title="Sneaky")
+
+    with pytest.raises(InvalidInput, match="cannot be free"):
+        pipeline.write(store, project.id, index, [sneaky])
 
 
 def test_rendering_an_empty_plan_is_refused_rather_than_producing_an_empty_deck(store, project, index):

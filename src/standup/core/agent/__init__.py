@@ -38,7 +38,8 @@ discards slides written against the old scope.
   scope.slide_budget: how many slides were asked for, or 5 if the request is silent.
 
 keep - the exact ids the deck should hold, in the order they should appear. Anything left out is
-cut. This is how you drop, reorder, or bring something back from the cut list.
+cut. This is how you drop, reorder, or bring something back from the cut list. Free slide ids
+belong in this list too, interleaved wherever they should sit among the evidence slides.
 
 write - slide text, one entry per slide you are changing. Slides you leave out keep their current
 wording exactly.
@@ -46,6 +47,12 @@ wording exactly.
   bullets: two to four short lines, each saying something the evidence supports.
   Never name a file, function or module that is not in that item's evidence. Describe what
   changed rather than showing code.
+  free: set this true for a slide with no evidence behind it - a title slide, a section break, or
+  exact wording the person dictated - and invent a short, stable id for it so it can be moved or
+  edited later. A free slide is not checked against the index, so the restraint is yours: write
+  only what was asked, nothing more. Asked for a title and nothing else, leave bullets empty -
+  do not invent lines to fill the slide out. It lands after the evidence slides unless you place
+  it with `keep`.
 
 Every path begins with the resource it came from - an attached folder or file - not a directory
 of it. Keep that first segment when you name a path, and never mix two resources on one slide.
@@ -75,6 +82,9 @@ def _deck_state(deck: Deck | None) -> str:
     ]
     if deck.selection.cut:
         lines += ["cut:"] + [f"  {entry.candidate.id}" for entry in deck.selection.cut]
+    frees = [slide for slide in deck.slides or [] if slide.free]
+    if frees:
+        lines += ["free:"] + [f"  {slide.candidate_id}: {slide.title}" for slide in frees]
     return "\n".join(lines)
 
 

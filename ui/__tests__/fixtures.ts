@@ -20,6 +20,7 @@ export const deck = (...titles: string[]): Deck => ({
   },
   slides: titles.map((title) => ({
     candidate_id: `src/${title}.py`,
+    free: false,
     title,
     bullets: [`${title} changed`],
   })),

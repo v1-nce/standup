@@ -1,14 +1,18 @@
 import asyncio
 import threading
+from pathlib import Path
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from standup.api import jobs, routes
 from standup.api import projects as projects_api
-from standup.api import routes
 from standup.api.app import app
 from standup.config import settings
+from standup.core import index as index_module
+from standup.core import pipeline
+from standup.core.models import Scope
 from standup.core.projects import ProjectStore
 from tests.conftest import Stuck, settled
 
@@ -65,6 +69,47 @@ def test_delete(client):
     project_id = client.post("/projects", json={"name": "Temp"}).json()["id"]
     assert client.delete(f"/projects/{project_id}").status_code == 204
     assert client.get("/projects").json() == []
+
+
+async def test_delete_sweeps_the_in_memory_state_it_touched(tmp_path, monkeypatch):
+    """A resource attached and indexed leaves state in four modules' dicts — delete must clear
+    all of it, not just the two `detach` already knew about."""
+    store = ProjectStore(tmp_path / "projects")
+    monkeypatch.setattr(projects_api, "get_store", lambda: store)
+    project = store.create("Temp")
+    note = tmp_path / "notes.md"
+    note.write_text("# Notes")
+    resource = store.attach_file(project.id, "notes.md", note.read_bytes())
+    assert resource.id in store._digests
+
+    facts_dir = store.paths(project.id).index / resource.id
+    index_module.ensure(Path(resource.location), facts_dir)
+    assert facts_dir in index_module._BUILDS
+
+    index = await pipeline.indexed(store, project.id)
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=1))
+    assert project.id in pipeline._LOCKS
+    assert project.id in pipeline._INDEX_CACHE
+
+    projects_api.delete_project(project.id)
+
+    assert resource.id not in store._digests
+    assert facts_dir not in index_module._BUILDS
+    assert project.id not in pipeline._LOCKS
+    assert project.id not in pipeline._INDEX_CACHE
+
+
+def test_jobs_are_pruned_past_a_cap_but_never_a_running_one(monkeypatch):
+    """Mirrors docs._DESCRIBED's bounded-cache test shape: fill past the cap, the oldest
+    finished job is dropped, a still-running one never is."""
+    monkeypatch.setattr(jobs, "_JOBS", {})
+    monkeypatch.setattr(jobs, "_JOBS_MAX", 2)
+
+    jobs._remember(jobs.Job(id="running", state="running", step="s"))
+    jobs._remember(jobs.Job(id="done-1", state="done", step="s"))
+    jobs._remember(jobs.Job(id="done-2", state="done", step="s"))
+
+    assert set(jobs._JOBS) == {"running", "done-2"}
 
 
 async def test_delete_is_refused_while_a_turn_is_running(tmp_path, monkeypatch):

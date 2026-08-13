@@ -18,6 +18,14 @@ SELECTION_FILE = "selection.json"
 PLAN_FILE = "plan.json"
 DECK_FILE = "deck.pptx"
 _LOCKS: defaultdict[str, threading.RLock] = defaultdict(threading.RLock)
+_INDEX_CACHE: dict[str, tuple[str, Index]] = {}
+_INDEX_CACHE_MAX = 16
+
+
+def evict(project_id: str) -> None:
+    """Drop a deleted project's in-memory bookkeeping — the lock and any cached merge."""
+    _LOCKS.pop(project_id, None)
+    _INDEX_CACHE.pop(project_id, None)
 
 
 def _room(store: ProjectStore, project_id: str) -> Path:
@@ -33,15 +41,29 @@ async def indexed(store: ProjectStore, project_id: str) -> Index | None:
 
 
 def _merge(store: ProjectStore, project_id: str) -> Index:
+    """`ensure` is cheap and runs every call; the expensive part — `merged`'s PageRank and
+    doc-emphasis pass — only reruns when a resource's fingerprint actually changed."""
     home = store.paths(project_id).index
     resources = store.get(project_id).resources
     for resource in resources:
         if not Path(resource.location).exists():
             raise InvalidInput(f"{resource.name} is no longer at {resource.location}")
-    return index_module.merged(
+
+    facts = [
         (resource.id, index_module.ensure(Path(resource.location), home / resource.id))
         for resource in resources
-    )
+    ]
+    key = "|".join(sorted(f"{rid}:{part.fingerprint}" for rid, part in facts))
+
+    cached = _INDEX_CACHE.get(project_id)
+    if cached and cached[0] == key:
+        return cached[1]
+
+    merged = index_module.merged(facts)
+    if project_id not in _INDEX_CACHE and len(_INDEX_CACHE) >= _INDEX_CACHE_MAX:
+        _INDEX_CACHE.pop(next(iter(_INDEX_CACHE)))
+    _INDEX_CACHE[project_id] = (key, merged)
+    return merged
 
 
 def forget(store: ProjectStore, project_id: str, resource_id: str) -> None:
@@ -123,14 +145,27 @@ def select(store: ProjectStore, project_id: str, index: Index, request: str, sco
 
 
 def edit(store: ProjectStore, project_id: str, keep: list[str]) -> Deck:
-    """The keep-list applied literally. Slides follow it for free where they already exist."""
+    """The keep-list applied literally. Slides follow it for free where they already exist.
+
+    `keep` may name candidate ids and free-slide ids together, interleaved in one order — a free
+    slide (a title, a section break) has no place in `Selection`, so `selection_module.edited`
+    only ever sees the candidate subset, while `revise` gets the full list to place everything.
+    """
     with _LOCKS[project_id]:
-        chosen = selection_module.edited(load(store, project_id), keep)
+        current = load(store, project_id)
+        candidate_ids = {entry.candidate.id for entry in [*current.chosen, *current.cut]}
+        written = _plan(store, project_id)
+        free_ids = {slide.candidate_id for slide in (written.slides if written else []) if slide.free}
+
+        unknown = [item for item in dict.fromkeys(keep) if item not in candidate_ids | free_ids]
+        if unknown:
+            raise NotFound(f"This deck has nothing called {unknown}")
+
+        chosen = selection_module.edited(current, [item for item in keep if item in candidate_ids])
         _put(store, project_id, SELECTION_FILE, chosen)
 
-        written = _plan(store, project_id)
         try:
-            followed = revise(written, chosen) if written else None
+            followed = revise(written, keep) if written else None
         except InvalidInput:
             (_room(store, project_id) / PLAN_FILE).unlink(missing_ok=True)
             return Deck(selection=chosen)
@@ -141,19 +176,34 @@ def edit(store: ProjectStore, project_id: str, keep: list[str]) -> Deck:
 
 
 def write(store: ProjectStore, project_id: str, index: Index, slides: list[Slide]) -> Deck:
-    """Slides merged onto whatever is written, then checked. One fault rejects the whole merge."""
+    """Slides merged onto whatever is written, then checked. One fault rejects the whole merge.
+
+    A free slide (`Slide.free`) carries no evidence and is exempt from grounding — it must still
+    be unambiguous: not a hallucinated candidate id in disguise, and not claiming to be free when
+    it is actually a real candidate. That check covers the cut list too, not just what's chosen —
+    a free slide squatting on a cut candidate's id would silently take over that id if the
+    candidate were ever restored via `keep`. New free slides land after the evidence slides; where
+    they end up staying is `keep`'s job, same as an evidence slide's position.
+    """
     with _LOCKS[project_id]:
         chosen = load(store, project_id)
         wanted = [entry.candidate.id for entry in chosen.chosen]
+        wanted_set = set(wanted)
+        all_candidates = wanted_set | {entry.candidate.id for entry in chosen.cut}
 
-        unknown = [slide.candidate_id for slide in slides if slide.candidate_id not in wanted]
-        if unknown:
-            raise NotFound(f"Not in this selection: {unknown}")
+        stray = [s.candidate_id for s in slides if not s.free and s.candidate_id not in wanted_set]
+        if stray:
+            raise NotFound(f"Not in this selection: {stray}")
+        claimed = [s.candidate_id for s in slides if s.free and s.candidate_id in all_candidates]
+        if claimed:
+            raise InvalidInput(f"Already a candidate in this selection, cannot be free: {claimed}")
 
         existing = _plan(store, project_id)
         by_id = {slide.candidate_id: slide for slide in (existing.slides if existing else [])}
         by_id.update({slide.candidate_id: slide for slide in slides})
-        merged = SlidePlan(slides=[by_id[item] for item in wanted if item in by_id])
+
+        order = wanted + [cid for cid in by_id if cid not in wanted_set]
+        merged = SlidePlan(slides=[by_id[item] for item in order if item in by_id])
 
         faults = slide_problems(slides, chosen, index)
         if faults:
@@ -169,7 +219,7 @@ def render(store: ProjectStore, project_id: str) -> Path:
         if not written or not written.slides:
             raise InvalidInput("No slides have been written yet")
         expected = [entry.candidate.id for entry in load(store, project_id).chosen]
-        actual = [slide.candidate_id for slide in written.slides]
+        actual = [slide.candidate_id for slide in written.slides if not slide.free]
         if actual != expected:
             raise InvalidInput("The deck is not complete yet")
         return render_deck(written, _room(store, project_id) / DECK_FILE)

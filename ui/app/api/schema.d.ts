@@ -143,7 +143,8 @@ export interface paths {
         put?: never;
         /**
          * Add Files
-         * @description Kept before the job starts, so the list shows them while the indexing runs.
+         * @description Kept before the job starts, so the list shows them while the indexing runs — all of them or
+         *     none, the same invariant `add_paths` holds.
          */
         post: operations["add_files_projects__project_id__context_files_post"];
         delete?: never;
@@ -297,10 +298,7 @@ export interface components {
             /** Locations */
             locations: string[];
         };
-        /**
-         * Deck
-         * @description A project's one deck: what it will say, and the slides once they are written.
-         */
+        /** Deck */
         Deck: {
             selection: components["schemas"]["Selection"];
             /** Slides */
@@ -348,10 +346,7 @@ export interface components {
             /** Via Gateway */
             via_gateway: boolean;
         };
-        /**
-         * Project
-         * @description `resources` is what the project may talk about. Empty until something is attached.
-         */
+        /** Project */
         Project: {
             /** Id */
             id: string;
@@ -378,10 +373,7 @@ export interface components {
             /** Name */
             name: string;
         };
-        /**
-         * Resource
-         * @description One thing a project may draw on. `id` prefixes every path derived from it.
-         */
+        /** Resource */
         Resource: {
             /** Id */
             id: string;
@@ -457,10 +449,7 @@ export interface components {
              */
             cut: components["schemas"]["Scored"][];
         };
-        /**
-         * SelectionEdit
-         * @description The ids to keep, in the order they should appear. Anything absent is cut.
-         */
+        /** SelectionEdit */
         SelectionEdit: {
             /** Keep */
             keep: string[];
@@ -469,6 +458,11 @@ export interface components {
         Slide: {
             /** Candidate Id */
             candidate_id: string;
+            /**
+             * Free
+             * @default false
+             */
+            free: boolean;
             /** Title */
             title: string;
             /**
