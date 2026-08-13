@@ -4,6 +4,7 @@
 
 # Local benchmark resources — real machine-specific paths, never exposed
 benchmarks/test_set.py
+benchmarks/.quality-cache/
 
 # Environments
 .venv/

@@ -1,0 +1,22 @@
+{
+  "name": "matplotlib",
+  "repo": "https://github.com/matplotlib/matplotlib.git",
+  "tag": "v1.0.1",
+  "talk": "The Architecture of Open Source Applications, Vol. 2, ch. 12 (Hunter & Droettboom) - https://aosabook.org/en/v2/matplotlib.html",
+  "request": "Explain the architecture: how a Figure is composed of Artists and rendered through a backend.",
+  "keywords": ["figure", "artist", "axes", "axis", "backend", "renderer"],
+  "slide_budget": 10,
+  "covered": [
+    "lib/matplotlib/figure.py",
+    "lib/matplotlib/artist.py",
+    "lib/matplotlib/axes.py",
+    "lib/matplotlib/axis.py",
+    "lib/matplotlib/backend_bases.py",
+    "lib/matplotlib/backends/backend_agg.py",
+    "lib/matplotlib/image.py",
+    "lib/matplotlib/lines.py",
+    "lib/matplotlib/patches.py",
+    "lib/matplotlib/pyplot.py",
+    "lib/matplotlib/text.py"
+  ]
+}
