@@ -142,3 +142,8 @@ the whole gap — most of the essay's own architecture chain is still absent, an
 non-architectural picks from the pre-fix run have not been re-audited yet. That remainder is
 where `selection/`'s candidate filtering and weights come in next, and it's exactly why CLAUDE.md
 says tuning them before this benchmark existed was guessing — now there's a number to tune against.
+
+**(post candidate-filter fix) 36% recall (4/11), 40% precision.** `tests` and `examples` are now
+skipped both during index walking and after git-history candidates are unioned in `gather`, so the
+test-fixture SVG no longer re-enters selection through history. The new hit is `figure.py`; still
+missed: `artist.py`, `axis.py`, `backend_agg.py`, `image.py`, `lines.py`, `patches.py`, `text.py`.

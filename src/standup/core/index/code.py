@@ -23,6 +23,10 @@ SKIP_DIRS = {
     "generated",
     "venv",
     "env",
+    "tests",
+    "test",
+    "examples",
+    "example",
 }
 MAX_FILE_BYTES = 1_000_000
 

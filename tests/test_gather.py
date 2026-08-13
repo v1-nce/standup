@@ -86,6 +86,14 @@ def test_a_file_deleted_in_the_window_is_still_work_done(index):
     assert chosen[1].commits == ["removal"]
 
 
+def test_a_skipped_path_does_not_reenter_through_git_history(index):
+    index.commits.append(commit("test-removal", THURSDAY, "src/tests/legacy_fixture.py"))
+    index.commits.append(commit("example-removal", THURSDAY, "examples/demo.py"))
+
+    chosen = candidates(index, Scope(since=THURSDAY, slide_budget=3))
+    assert [c.id for c in chosen] == ["src/auth.py"]
+
+
 def test_a_window_reaching_past_a_capped_history_is_refused(index):
     capped = make_index(commits=index.commits, complete=False)
     with pytest.raises(InvalidInput, match="most recent"):

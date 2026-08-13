@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 
+from standup.core.index.code import SKIP_DIRS
 from standup.core.models import Candidate, Index, Scope
 from standup.errors import InvalidInput
 
@@ -43,6 +44,10 @@ def _in_window(moment: datetime, scope: Scope) -> bool:
     return not (scope.until and moment > _aware(scope.until))
 
 
+def _skipped(path: str) -> bool:
+    return any(part in SKIP_DIRS for part in PurePosixPath(path).parts[:-1])
+
+
 def candidates(index: Index, scope: Scope) -> list[Candidate]:
     """Every indexed file the window puts in play, carrying the commits that touched it."""
     touched: dict[str, list[str]] = {}
@@ -65,5 +70,6 @@ def candidates(index: Index, scope: Scope) -> list[Candidate]:
     in_play = {path for path in indexed if not windowed or path in touched}
     # A file deleted in the window is still work done, and only git remembers it.
     in_play |= touched.keys() - indexed
+    in_play = {path for path in in_play if not _skipped(path)}
 
     return [candidate(path) for path in sorted(in_play)]

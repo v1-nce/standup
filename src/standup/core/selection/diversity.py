@@ -5,8 +5,7 @@ from pathlib import PurePosixPath
 
 from standup.core.models import Candidate
 
-# Below ~0.5 the deck stops being about the most important work; above ~0.85 it is eight slides
-# on one subsystem. 0.7 is the usual starting point and has not been tuned against a benchmark.
+# Keep relevance primary while still letting near-ties open a different subsystem.
 LAMBDA = 0.7
 
 
