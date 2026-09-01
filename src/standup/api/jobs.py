@@ -15,6 +15,12 @@ from standup.errors import Busy, NotFound, StandupError
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
+def already_working() -> Busy:
+    """The project id is never shown as text anywhere else in the UI - interpolating it into this
+    message only leaked an internal slug into a user-facing error."""
+    return Busy("This project is already working")
+
+
 class Job(BaseModel):
     id: str
     state: Literal["running", "done", "failed"]
@@ -64,7 +70,7 @@ def start(step: str, work: Coroutine[None, None, None], *, lock: str | None = No
     running = _LIVE.get(lock) if lock else None
     if running and not running.done():
         work.close()
-        raise Busy(f"{lock} is already working")
+        raise already_working()
 
     job = Job(id=uuid4().hex[:12], state="running", step=step)
     _remember(job)
@@ -81,7 +87,7 @@ def start(step: str, work: Coroutine[None, None, None], *, lock: str | None = No
 def starting(key: str, *, exclusive: bool = False):
     running = _LIVE.get(key)
     if exclusive and ((running is not None and not running.done()) or _STARTING[key] > 0):
-        raise Busy(f"{key} is already working")
+        raise already_working()
     _STARTING[key] += 1
     try:
         yield
@@ -90,7 +96,9 @@ def starting(key: str, *, exclusive: bool = False):
 
 
 def start_indexing(step: str, key: str, work: Coroutine[None, None, None]) -> Job:
-    """Queue indexing and mark the project busy before the response can return."""
+    """Queue indexing and mark the project busy before the response can return. `start(step, ...)`
+    is called with no `lock`, so it never refuses - the try/except this used to wrap around it was
+    unreachable dead code, per CLAUDE.md's "delete what you replace"."""
     _PENDING_INDEXING[key] += 1
 
     async def queued() -> None:
@@ -100,14 +108,7 @@ def start_indexing(step: str, key: str, work: Coroutine[None, None, None]) -> Jo
         finally:
             _PENDING_INDEXING[key] -= 1
 
-    queued_work = queued()
-    try:
-        return start(step, queued_work)
-    except Exception:
-        queued_work.close()
-        work.close()
-        _PENDING_INDEXING[key] -= 1
-        raise
+    return start(step, queued())
 
 
 def indexing_lock(key: str) -> asyncio.Lock:

@@ -6,6 +6,7 @@ export type Resource = Schemas["Resource"];
 export type ChatMessage = Schemas["ChatMessage"];
 export type Deck = Schemas["Deck"];
 export type Job = Schemas["Job"];
+export type Scored = Schemas["Scored"];
 
 const BASE = process.env.NODE_ENV === "development" ? "http://127.0.0.1:8000" : "";
 

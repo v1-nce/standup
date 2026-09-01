@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from standup.core._json import atomic_write, load_json
 from standup.core.index import forget
 from standup.core.index.docs import read, readable
 from standup.core.models import Project, ProjectPaths, Resource, ResourceKind
@@ -223,7 +224,7 @@ class ProjectStore:
     def _write(self, root: Path, project: Project) -> None:
         with self._guard:
             try:
-                (root / "project.json").write_text(project.model_dump_json(indent=2), encoding="utf-8")
+                atomic_write(root / "project.json", project.model_dump_json(indent=2))
             except OSError as failure:
                 raise _unreadable("saved", project.name, failure) from failure
 
@@ -232,4 +233,4 @@ class ProjectStore:
         with self._guard:
             if not record.is_file():
                 return None
-            return Project.model_validate_json(record.read_text(encoding="utf-8"))
+            return load_json(Project, record.read_text(encoding="utf-8"), f"{root.name}'s project record")

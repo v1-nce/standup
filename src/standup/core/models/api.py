@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from standup.core.models.artifacts import Selection, Slide
+from standup.core.models.artifacts import DeckDesign, Selection, Slide
 
 
 class Health(BaseModel):
@@ -21,6 +21,7 @@ class ModelCheck(BaseModel):
 
 class Deck(BaseModel):
     selection: Selection
+    design: DeckDesign = DeckDesign()
     slides: list[Slide] | None = None
 
 

@@ -1,14 +1,16 @@
-"""The requests benchmark.py measures cost and latency against — a few varied enough that one
-number isn't just one lucky prompt. Run in order against one project, so only the first pays for
-a cold index; the rest are the ordinary case afterward."""
+"""Stable prompts for independent deck-generation benchmark samples.
 
-try:
-    from benchmarks.test_set import RESOURCES
-except ImportError:
-    RESOURCES: list[str] = []  # no local test_set.py — benchmark.py falls back to standup's own repo
+Each prompt runs in its own project. `COLD_TASK` measures first-request indexing plus generation;
+every entry in `TASKS` measures generation after the same project's index has been warmed.
+"""
+
+COLD_TASK = ("recap", "Give me a 5-slide deck on the most important project changes")
 
 TASKS: dict[str, str] = {
-    "recap": "Give me a 5-slide deck on the recent work",
-    "technical-audience": "Build a 3-slide deck for a technical audience on what changed this week",
+    "recap": "Give me a 5-slide deck on the most important project changes",
+    "technical-audience": (
+        "Build a 3-slide deck for a technical audience explaining the indexing, selection, "
+        "and presentation architecture"
+    ),
     "full-history": "Make an 8-slide deck covering the whole project so far",
 }

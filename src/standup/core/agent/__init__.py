@@ -1,19 +1,21 @@
 """The turn: the model reads the conversation, changes the deck, and answers. One loop, one caller."""
 
+import asyncio
 import re
 from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
 from standup.core import pipeline
-from standup.core.agent.commands import Command, apply
+from standup.core.agent.commands import Command, apply, echo
 from standup.core.llm import ModelClient
-from standup.core.models import ChatMessage, Deck, Index
+from standup.core.models import ChatMessage, Deck, Index, Scope, Slide
 from standup.core.present import evidence
-from standup.core.projects import ProjectStore
+from standup.core.projects import ChatLog, ProjectStore
 from standup.errors import NotFound
 
-MAX_ROUNDS = 5
+MAX_ROUNDS = 3
+MAX_HISTORY_MESSAGES = 12
 MAX_PROMPT_EXCERPTS = 8
 PROMPT_EXCERPT_CHARS = 800
 MAX_CONTEXT_RESOURCES = 20
@@ -23,11 +25,13 @@ _BORING_TERMS = {"about", "attached", "document", "file", "files", "tell", "what
 SYSTEM = """You are Standup. You build and improve one slide deck per project by talking to the
 person who will present it, and you answer them the way a colleague would.
 
-Put any change to the deck in `commands`, and leave `commands` empty once the deck needs no more
-work - that ends the turn. `reply` is what the person reads, so write it only on the round you
-leave `commands` empty; while you are still working, leave `reply` empty too.
-Only use commands when the person asks to create or change the deck. For ordinary questions about
-the project or attached context, answer directly with no commands.
+Put a deck change in `commands`, with exactly one command per round. The command runs before you
+see the next round, so never guess the result of `select` and never batch operations against stale
+state. Set `changes_deck` true whenever the person asked to create or change the deck, even if you
+cannot name a command yet. Leave `commands` empty once the deck needs no more work. `reply` is what
+the person reads, so write it only with empty `commands`; while working, leave it empty too.
+For ordinary questions about the project or attached context, answer directly with no commands and
+set `changes_deck` false.
 
 You do not decide what matters. Ranking is computed from the repository itself: what changed,
 what depends on what, what the project's own writing stresses. Your job is to set the search,
@@ -43,24 +47,43 @@ discards slides written against the old scope.
   scope.keywords: distinctive terms worth matching against code and commit messages. Ordinary
     words - update, work, stuff, things - are not keywords.
   scope.audience: who the deck is for, if the request says.
-  scope.slide_budget: how many slides were asked for, or 5 if the request is silent.
+  scope.slide_budget: how many slides were asked for, or 5 if the request is silent. This counts
+    the evidence candidates `select` chooses - a free slide (a title, a section break, one the
+    person asked for by name) is additional, not one of these slots. Every chosen candidate still
+    needs its own slide even after a free one is added.
 
 keep - the exact ids the deck should hold, in the order they should appear. Anything left out is
 cut. This is how you drop, reorder, or bring something back from the cut list. Free slide ids
-belong in this list too, interleaved wherever they should sit among the evidence slides.
+belong in this list too, interleaved wherever they should sit among the evidence slides - but only
+once `write` has given that id a slide. `keep` places slides, it does not create them.
 
-write - slide text, one entry per slide you are changing. Slides you leave out keep their current
-wording exactly.
-  title: a short phrase naming the item. Not a sentence.
-  bullets: two to four short lines, each saying something the evidence supports.
-  Never name a file, function or module that is not in that item's evidence. Describe what
-  changed rather than showing code.
-  free: set this true for a slide with no evidence behind it - a title slide, a section break, or
-  exact wording the person dictated - and invent a short, stable id for it so it can be moved or
-  edited later. A free slide is not checked against the index, so the restraint is yours: write
-  only what was asked, nothing more. Asked for a title and nothing else, leave bullets empty -
-  do not invent lines to fill the slide out. It lands after the evidence slides unless you place
-  it with `keep`.
+write - create or replace complete slides. Slides you leave out remain byte-for-byte unchanged.
+It may also set `design` while creating a deck, avoiding a separate styling round.
+  Keep title, subtitle, bullets, secondary content, image and speaker_notes as the accessible,
+  grounded outline. `elements` is REQUIRED and must be non-empty on every slide you write: ordered
+  layers on a 100×100 canvas. The command is rejected without them. Legacy layout fields are only
+  for reading old decks; never use them as the design. Put every visible word, including the title,
+  in a text element—the outline does not paint itself once a canvas composition exists.
+  Each element needs a stable id, kind, x, y, width and height. Coordinates are percentages.
+    text: text, color, font_size (6-96), font_weight, optional font_family, align and valign.
+    shape: rectangle, rounded, ellipse, triangle or chevron; fill, stroke and stroke_width.
+    line: a vector from x,y by width,height; stroke and stroke_width. Width or height may be zero.
+    image: an attached image id copied exactly from RELEVANT INDEXED EXCERPTS.
+  Colors may be #RRGGBB or theme tokens: background, surface, text, muted, accent, on_accent,
+  transparent. Later elements paint above earlier ones. Rotation is available on every layer.
+  Compose, do not decorate a template: establish one visual idea, strong hierarchy, deliberate
+  alignment and negative space. Use shapes, scale, asymmetry and layering when they clarify the
+  story. Do not add furniture merely to fill the canvas, and keep text readable rather than dense.
+  free is true only when no selected evidence backs the slide. Evidence-slide outline and canvas
+  text must remain grounded; never name a file or function the project does not have.
+
+update - patch one existing slide without resending it. Name slide_id and only fields to change.
+`upsert_elements` replaces matching stable element ids or appends new layers; `remove_element_ids`
+deletes layers. Everything omitted stays exact. clear_image removes the outline image.
+
+style - replace deck-level art direction without touching slide content. design.theme is technical,
+light, dark, editorial, or bold. An optional #RRGGBB accent and heading/body font names customize it.
+Use `write.design` while creating a deck so the bounded turn still has room to finish slides.
 
 Every path begins with the resource it came from - an attached folder or file - not a directory
 of it. Keep that first segment when you name a path, and never mix two resources on one slide.
@@ -71,57 +94,181 @@ it is downloaded.
 A rejected command comes back as a result line. Read it and correct course; do not repeat it."""
 
 
+def _slide_text(slide: Slide) -> str:
+    body = " / ".join(slide.bullets)
+    secondary = " / ".join(slide.secondary_bullets)
+    text = f'"{slide.title}"' + (f" - {body}" if body else "")
+    details = [f"layout: {slide.layout}"]
+    if slide.subtitle:
+        details.append(f"subtitle: {slide.subtitle}")
+    if secondary:
+        details.append(f"secondary: {slide.secondary_title}: {secondary}")
+    if slide.image:
+        details.append(f"image: {slide.image}")
+    if slide.speaker_notes:
+        details.append("speaker notes present")
+    if slide.elements:
+        details.append(
+            "canvas: " + "; ".join(
+                element.model_dump_json(exclude_none=True) for element in slide.elements
+            )
+        )
+    return f"{text} [{' | '.join(details)}]"
+
+def _scope_state(scope: Scope) -> str:
+    parts = [f"{scope.slide_budget} slides"]
+    if scope.since:
+        parts.append(f"since {scope.since.date().isoformat()}")
+    if scope.until:
+        parts.append(f"until {scope.until.date().isoformat()}")
+    if scope.keywords:
+        parts.append(f"keywords {', '.join(scope.keywords)}")
+    if scope.paths:
+        parts.append(f"paths {', '.join(scope.paths)}")
+    if scope.audience:
+        parts.append(f"for {scope.audience}")
+    return " | ".join(parts)
+
+
 def _deck_state(deck: Deck | None) -> str:
     if deck is None:
         return "DECK\nnone yet"
 
-    written = {slide.candidate_id for slide in deck.slides or []}
-    audience = deck.selection.scope.audience
+    written = {slide.candidate_id: slide for slide in deck.slides or []}
     lines = [
-        f'DECK (request: "{deck.selection.request}"'
-        + (f", audience: {audience}" if audience else "")
-        + ")",
-        "chosen:",
+        f'DECK (request: "{deck.selection.request}")',
+        f"design: {deck.design.theme}"
+        + (f" | accent {deck.design.accent}" if deck.design.accent else "")
+        + f" | {deck.design.heading_font} / {deck.design.body_font}",
+        # The standing scope, echoed back. It was write-only before, so "make it three slides
+        # instead" meant re-deriving a window and keywords the model could no longer see.
+        f"scope: {_scope_state(deck.selection.scope)}",
     ]
-    lines += [
-        f"  {entry.candidate.id}"
-        + (" [slide written]" if entry.candidate.id in written else " [no slide]")
-        for entry in deck.selection.chosen
-    ]
+
+    if deck.slides is not None and not _missing_evidence_slides(deck):
+        # Complete: `deck.slides` is the one true render order, evidence and free interleaved.
+        # Showing it as two separate lists (evidence order, then a free bucket) hid where a free
+        # slide actually sits - "the last slide" became ambiguous between "last of chosen" and
+        # "last of free", and a `keep` built on that guess moved more than the one slide asked for.
+        lines.append("order (top to bottom, exactly as it renders):")
+        lines += [
+            f"  {position}. {slide.candidate_id}"
+            + (" [free]" if slide.free else "")
+            + f" {_slide_text(slide)}"
+            for position, slide in enumerate(deck.slides, start=1)
+        ]
+    else:
+        lines.append("chosen:")
+        lines += [
+            f"  {entry.candidate.id}"
+            + (
+                f" [slide written] {_slide_text(written[entry.candidate.id])}"
+                if entry.candidate.id in written
+                else " [no slide]"
+            )
+            for entry in deck.selection.chosen
+        ]
+        frees = [slide for slide in deck.slides or [] if slide.free]
+        if frees:
+            lines += ["free:"] + [f"  {slide.candidate_id}: {_slide_text(slide)}" for slide in frees]
+
     if deck.selection.cut:
         lines += ["cut:"] + [f"  {entry.candidate.id}" for entry in deck.selection.cut]
-    frees = [slide for slide in deck.slides or [] if slide.free]
-    if frees:
-        lines += ["free:"] + [f"  {slide.candidate_id}: {slide.title}" for slide in frees]
     return "\n".join(lines)
 
 
+def _latest_user(history: list[ChatMessage]) -> str:
+    return next((m.content for m in reversed(history) if m.role == "user"), "")
+
+
 def _terms(history: list[ChatMessage]) -> set[str]:
-    latest = next((m.content for m in reversed(history) if m.role == "user"), "")
-    return {term for term in _TERM.findall(latest.lower()) if term not in _BORING_TERMS}
+    return {term for term in _TERM.findall(_latest_user(history).lower()) if term not in _BORING_TERMS}
+
+
+def _missing_evidence_slides(deck: Deck | None) -> list[str]:
+    if not deck:
+        return []
+    written = {slide.candidate_id for slide in deck.slides or [] if not slide.free}
+    return [entry.candidate.id for entry in deck.selection.chosen if entry.candidate.id not in written]
+
+
+_NO_DECK = "No deck command completed."
+_NO_MATCHES = "The last select matched no candidates."
+_NOTHING_RAN = "No command ran, though the message reads like a request to change the deck."
+_NOTHING_SAID = "I don't have anything to add to that."
+_DONE = "Done - the deck is ready."
+
+_BLOCKED_REPLY = {
+    _NO_DECK: "I couldn't create the deck because no deck command completed.",
+    _NO_MATCHES: "I couldn't create the deck because that request matched nothing to build slides from.",
+    _NOTHING_RAN: "I didn't manage to make that change to the deck.",
+}
+
+
+def _deck_blocker(deck: Deck | None) -> str | None:
+    """None once the deck is complete. Otherwise a line naming what's wrong - `_NO_DECK` and
+    `_NO_MATCHES` are dead ends (nothing to build from), but a named missing slide is fixable, and
+    the caller treats it differently: one more real attempt before giving up, not an immediate one."""
+    if deck is None:
+        return _NO_DECK
+    if not deck.selection.chosen:
+        return _NO_MATCHES
+    missing = _missing_evidence_slides(deck)
+    if missing:
+        names = ", ".join(item.split("/")[-1] for item in missing)
+        return f"still needs evidence slides for: {names}"
+    return None
+
+
+def _blocked_reply(blocker: str) -> str:
+    # The three fixed reasons get their own wording; anything else is `_deck_blocker`'s own
+    # sentence, already specific (which slide, not just "some slide") - showing it beats a canned
+    # line that used to throw that detail away.
+    return _BLOCKED_REPLY.get(blocker, f"I couldn't finish the deck - {blocker}.")
+
+
+def _blocker_note(blocker: str) -> str:
+    """Tell the next bounded round exactly what remains to be done."""
+    if blocker == _NO_DECK:
+        return "No deck command ran. Run select, then write before answering."
+    if blocker in (_NO_MATCHES, _NOTHING_RAN):
+        return blocker
+    return f"The deck {blocker}. Write it now."
 
 
 def _indexed_excerpts(index: Index | None, history: list[ChatMessage]) -> str:
     if not index:
         return ""
     terms = _terms(history)
+    available = [facts for facts in index.files if facts.excerpt]
+    matched = [
+        facts
+        for facts in available
+        if not terms or any(term in f"{facts.path} {facts.excerpt}".lower() for term in terms)
+    ]
+    # ponytail: wording that shares no literal term with anything indexed falls back to whatever
+    # comes first, rather than showing nothing — a rank-ordered fallback is the upgrade if that
+    # proves too arbitrary.
     blocks = []
-    for facts in index.files:
-        if not facts.excerpt:
-            continue
-        haystack = f"{facts.path} {facts.excerpt}".lower()
-        if terms and not any(term in haystack for term in terms):
-            continue
+    for facts in (matched or available)[:MAX_PROMPT_EXCERPTS]:
         text = " ".join(facts.excerpt.split())[:PROMPT_EXCERPT_CHARS]
         blocks.append(f"id: {facts.path}\ntext: {text}")
-        if len(blocks) == MAX_PROMPT_EXCERPTS:
-            break
     return "\n\n".join(blocks)
+
+
+def _sources(store: ProjectStore, project_id: str, deck: Deck) -> dict[str, str]:
+    """The current text of every chosen file. Read per round because a `select` changes who is
+    chosen, and a handful of small reads is nothing beside the model call they inform."""
+    return pipeline.sources(
+        store,
+        project_id,
+        [path for entry in deck.selection.chosen for path in entry.candidate.paths],
+    )
 
 
 def _resources(store: ProjectStore, project_id: str) -> str:
     return "\n".join(
-        f"{resource.kind.value}: {resource.name}"
+        f"{resource.kind.value}: {resource.name} (id: {resource.id})"
         for resource in store.get(project_id).resources[:MAX_CONTEXT_RESOURCES]
     )
 
@@ -135,6 +282,7 @@ def _prompt(
     today: datetime,
     *,
     last: bool,
+    may_command: bool = False,
 ) -> str:
     """Stable first, volatile last, so a cached prefix stays a prefix when caching lands."""
     try:
@@ -149,26 +297,40 @@ def _prompt(
         if index
         else "Nothing attached yet, so no deck can be built. Say so if one is asked for"
     )
-    said = "\n".join(f"{message.role}: {message.content}" for message in history)
+    recent = history[-MAX_HISTORY_MESSAGES:]
+    said = "\n".join(f"{message.role}: {message.content}" for message in recent)
+    cited = ""
+    if deck and index:
+        cited = evidence(deck.selection, index, _sources(store, project_id, deck))
     blocks = [
+        # Stable across every round of this turn - changes only between turns, if at all.
         f"{facts}. Today is {today.date().isoformat()}.",
         f"CONTEXT RESOURCES\n{_resources(store, project_id)}",
-        _deck_state(deck),
         f"RELEVANT INDEXED EXCERPTS\n{_indexed_excerpts(index, history)}",
-        f"EVIDENCE\n{evidence(deck.selection, index) if deck and index else ''}",
         f"CONVERSATION\n{said}",
+        # Volatile: a command applied last round changes both of these before the next one is asked.
+        _deck_state(deck),
+        f"EVIDENCE\n{cited}",
     ]
     if results:
         blocks.append("RESULTS THIS TURN\n" + "\n".join(results))
     if last:
-        blocks.append("LAST ROUND\nNo further commands will be run. Answer now with what stands.")
+        blocks.append(
+            (
+                "FINAL OPERATIONAL ROUND\nThe deck is incomplete. Exactly one command can still run. "
+                "Run it now if it can finish the deck; otherwise answer honestly."
+            )
+            if may_command
+            else "LAST ROUND\nNo further commands will be run. Answer now with what stands."
+        )
     return "\n\n".join(blocks)
 
 
 class Turn(BaseModel):
-    """What the model returns each round. No commands means the turn is over."""
+    """One bounded decision: one operation, or an answer."""
 
     reply: str
+    changes_deck: bool = False
     commands: list[Command] = []
 
 
@@ -179,21 +341,91 @@ async def converse(
     history: list[ChatMessage],
     *,
     today: datetime | None = None,
+    log: ChatLog | None = None,
 ) -> str:
-    """Answer the last message, changing the deck as the conversation requires."""
+    """Answer the last message, changing the deck as the conversation requires.
+
+    `log`, when given, is where each round's command outcomes are persisted as they happen - the
+    same lines `results` carries within this turn, kept past it. Without a persisted record, a later
+    turn can only read the model's own reply, which may say a command succeeded when it didn't; `log`
+    is what lets it read back what actually ran.
+    """
     index = await pipeline.indexed(store, project_id)
     when = today or datetime.now(UTC)
     results: list[str] = []
+    changed = False
+    change_expected = False
+    stalled = False
 
-    async def ask(*, last: bool) -> Turn:
-        prompt = _prompt(store, project_id, index, history, results, when, last=last)
+    async def ask(*, last: bool, may_command: bool) -> Turn:
+        prompt = await asyncio.to_thread(
+            _prompt, store, project_id, index, history, results, when, last=last, may_command=may_command
+        )
         return await client.structured(prompt, Turn, system=SYSTEM)
 
-    for _ in range(MAX_ROUNDS - 1):
-        turn = await ask(last=False)
-        if not turn.commands:
-            return turn.reply
-        results += [apply(store, project_id, index, command) for command in turn.commands]
+    async def deck() -> Deck | None:
+        try:
+            return await asyncio.to_thread(pipeline.read, store, project_id)
+        except NotFound:
+            return None
 
-    # Out of budget. Asking for an answer beats raising, which would throw away work already done.
-    return (await ask(last=True)).reply
+    async def record(outcome: str) -> None:
+        if log is not None:
+            await asyncio.to_thread(log.append, "command", outcome)
+
+    for round_number in range(MAX_ROUNDS):
+        current = await deck()
+        blocker = _deck_blocker(current) if changed else None
+        complete = changed and blocker is None
+        final_operation = not complete and round_number == MAX_ROUNDS - 1
+        last = complete or final_operation
+        turn = await ask(last=last, may_command=final_operation)
+        change_expected = change_expected or turn.changes_deck or bool(turn.commands)
+
+        if last and not final_operation:
+            if complete:
+                return turn.reply or _DONE
+            if change_expected:
+                reason = _deck_blocker(current) if changed else _NOTHING_RAN
+                return _blocked_reply(reason or _NOTHING_RAN)
+            return turn.reply or _NOTHING_SAID
+
+        if not turn.commands:
+            if not change_expected or index is None:
+                return turn.reply or _NOTHING_SAID
+            if final_operation:
+                return _blocked_reply(blocker or _NOTHING_RAN)
+            if stalled:
+                return _blocked_reply(blocker or _NOTHING_RAN)
+            stalled = True
+            results.append(_blocker_note(blocker or _NOTHING_RAN))
+            continue
+
+        if len(turn.commands) != 1:
+            if final_operation:
+                return _blocked_reply(blocker or _NOTHING_RAN)
+            stalled = True
+            results.append(
+                f"commands rejected: expected exactly one operation, got {len(turn.commands)}"
+            )
+            continue
+
+        command = turn.commands[0]
+        outcome = await asyncio.to_thread(apply, store, project_id, index, command)
+        await record(outcome)
+        results.append(outcome)
+        if outcome.startswith(f"{echo(command)} rejected:"):
+            stalled = True
+        else:
+            changed = True
+            stalled = False
+
+        blocker = _deck_blocker(await deck()) if changed else None
+        if blocker == _NO_MATCHES:
+            return _blocked_reply(blocker)
+        if blocker:
+            results.append(_blocker_note(blocker))
+        if final_operation:
+            return _blocked_reply(blocker) if blocker else _DONE
+
+    raise RuntimeError("agent round budget exhausted without a final response")

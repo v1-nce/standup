@@ -16,11 +16,17 @@ export function ChatPanel({
   pending: boolean;
 }) {
   const transcript = useRef<HTMLDivElement>(null);
+  // A `command` entry is what a round actually did, kept so the agent can read it back next turn -
+  // not something the person typed or read out loud, so it never becomes a chat bubble.
+  const said = messages.filter(
+    (message): message is ChatMessage & { role: "user" | "assistant" } =>
+      message.role !== "command",
+  );
 
   useEffect(() => {
     const view = transcript.current;
     if (view) view.scrollTop = view.scrollHeight;
-  }, [messages.length, pending]);
+  }, [said.length, pending]);
 
   return (
     <div className="relative flex min-h-48 flex-1 flex-col border border-rule">
@@ -37,13 +43,13 @@ export function ChatPanel({
         ref={transcript}
         className="scroll-thin flex flex-1 flex-col gap-4 overflow-y-auto overscroll-contain scroll-smooth p-4 pt-12"
       >
-        {messages.length === 0 && !pending && (
+        {said.length === 0 && !pending && (
           <p className="text-sm leading-relaxed text-muted">
             Ask for a deck. Standup reads the repository and decides what belongs on it.
           </p>
         )}
 
-        {messages.map((message, index) => (
+        {said.map((message, index) => (
           <div key={index} className="flex flex-col gap-1">
             <span className="label">{WHO[message.role]}</span>
             <p

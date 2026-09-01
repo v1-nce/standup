@@ -8,6 +8,8 @@ from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from standup.core.index.code import parse, relative, walk
 from standup.core.index.docs import MAX_DOC_CHARS, emphasis, prose, read
 from standup.core.index.graph import aliases, rank
@@ -70,13 +72,20 @@ def _document(path: Path) -> Facts:
 
 
 def ensure(root: Path, facts_dir: Path) -> Facts:
-    """The stored facts if the resource is unchanged, fresh ones otherwise."""
+    """The stored facts if the resource is unchanged, fresh ones otherwise.
+
+    A corrupt cache file is a cache miss, not a user-facing failure - the source it was derived from
+    is still right there, so a bad `facts.json` self-heals by rebuilding rather than raising.
+    """
     with _lock_on(facts_dir):
         record = facts_dir / FACTS_FILE
         current = fingerprint(root)
         if record.is_file():
-            stored = Facts.model_validate_json(record.read_text(encoding="utf-8"))
-            if stored.fingerprint == current:
+            try:
+                stored = Facts.model_validate_json(record.read_text(encoding="utf-8"))
+            except ValidationError:
+                stored = None
+            if stored and stored.fingerprint == current:
                 return stored
 
         facts = build(root)

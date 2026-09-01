@@ -148,7 +148,9 @@ def emphasis(text: str, files: list[FileFacts]) -> dict[str, float]:
     """Mentions of each symbol's own name, whatever punctuation it's built from — `valid?`,
     `operator+`, `make-list`. A single tokenizer regex can't enumerate every language's identifier
     punctuation, so each name is searched for directly instead, bounded on both sides by anything
-    that isn't a word character (`re`'s own pattern cache makes this free to repeat per name)."""
+    that isn't a word character (`re`'s own pattern cache makes this free to repeat per name).
+    Case-insensitive throughout - prose capitalises a class differently mid-sentence than its own
+    file does, and a filename mention already matched either case; a symbol mention should too."""
     if not text:
         return {}
     lowered = text.lower()
@@ -157,7 +159,9 @@ def emphasis(text: str, files: list[FileFacts]) -> dict[str, float]:
     for facts in files:
         filename = Path(facts.path).name
         names = [s.name for s in facts.symbols if len(s.name) >= MIN_NAME_LENGTH]
-        mentions = sum(len(re.findall(rf"(?<!\w){re.escape(name)}(?!\w)", text)) for name in names)
+        mentions = sum(
+            len(re.findall(rf"(?<!\w){re.escape(name)}(?!\w)", text, re.IGNORECASE)) for name in names
+        )
         if len(filename) >= MIN_NAME_LENGTH:
             names.append(filename)
             mentions += lowered.count(filename.lower())

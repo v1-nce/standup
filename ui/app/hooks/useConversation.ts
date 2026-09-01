@@ -52,7 +52,13 @@ export function useConversation(projectId: string | null) {
         if (finished.state === "failed") setError(finished.detail ?? "The turn failed");
         await refresh(projectId);
       } catch (failure) {
-        if (active.current === projectId) setError(reason(failure));
+        if (active.current === projectId) {
+          setError(reason(failure));
+          // The optimistic bubble above was never confirmed sent (sendMessage/awaitJob itself
+          // threw, before or during the request) - resync with the server instead of guessing
+          // which local message to remove.
+          await refresh(projectId).catch(() => {});
+        }
       } finally {
         if (active.current === projectId) setPending(false);
       }

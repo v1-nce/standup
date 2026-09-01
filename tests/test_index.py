@@ -180,6 +180,15 @@ def test_emphasis_credits_cpp_operator_overload_identifiers():
     assert emphasis(text, facts)["src/vector.cpp"] == 1.0
 
 
+def test_emphasis_credits_a_symbol_mention_regardless_of_case():
+    """Filename mentions were already case-insensitive; a symbol mentioned as "the Router class"
+    used to score 0 for a symbol literally named "Router" if prose ever lowercased it, or vice
+    versa - the same inconsistency this fixes for filenames stays fixed for symbols too."""
+    facts = [FileFacts(path="src/hub.py", content_hash="h", symbols=[Symbol(name="Router", kind="Class", line=1)])]
+    text = "Sets up the router. See Router for the implementation."
+    assert emphasis(text, facts)["src/hub.py"] == 1.0
+
+
 def test_merged_caps_the_joined_prose_across_resources(monkeypatch):
     """Each resource's own text is already capped individually; the join across resources must
     not let a project with several large resources hand emphasis() an uncapped string."""
@@ -223,6 +232,27 @@ def test_commits_read_the_real_history(repo):
     assert history[0].author == "Tester"
     assert history[0].changes["src/hub.py"] > 0
     assert history[0].changes["src/leaf.py"] < history[0].changes["src/caller_a.py"]
+
+
+def test_a_rename_credits_churn_to_the_file_as_it_exists_today(repo):
+    """`git log --numstat` renders a rename as `prefix{old => new}suffix` (or bare `old => new` with
+    no shared affix) - unresolved, that whole expression read as one fabricated path, so the real
+    file lost its churn credit and a candidate for a path that never existed appeared instead."""
+    for command in (
+        ["git", "init", "-q"],
+        ["git", "config", "user.email", "t@example.com"],
+        ["git", "config", "user.name", "Tester"],
+        ["git", "add", "-A"],
+        ["git", "commit", "-qm", "first commit"],
+        ["git", "mv", "src/hub.py", "src/core.py"],
+        ["git", "commit", "-qm", "reorganise"],
+    ):
+        subprocess.run([*command[:1], "-C", str(repo), *command[1:]], check=True, capture_output=True)
+
+    history, _ = commits(repo)
+    rename = next(c for c in history if c.message == "reorganise")
+    assert set(rename.changes) == {"src/core.py"}
+    assert not any("=>" in path or "{" in path for commit in history for path in commit.changes)
 
 
 def test_a_capped_history_says_so_rather_than_pretending_to_be_whole(repo):
@@ -423,3 +453,14 @@ def test_ensure_reuses_the_stored_facts_until_the_resource_changes(repo, tmp_pat
     rebuilt = index.ensure(repo, facts_dir)
     assert rebuilt.fingerprint != first.fingerprint
     assert "src/new.py" in {f.path for f in rebuilt.files}
+
+
+def test_a_corrupt_facts_cache_self_heals_by_rebuilding(repo, tmp_path):
+    """The source it was derived from is still right there, so unlike a corrupt selection or plan
+    (irreplaceable state), a bad cache file costs a rebuild, not an error the caller has to handle."""
+    facts_dir = tmp_path / "index"
+    index.ensure(repo, facts_dir)
+    (facts_dir / index.FACTS_FILE).write_text("not json", encoding="utf-8")
+
+    rebuilt = index.ensure(repo, facts_dir)
+    assert "src/hub.py" in {f.path for f in rebuilt.files}

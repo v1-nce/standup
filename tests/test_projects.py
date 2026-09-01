@@ -39,6 +39,27 @@ def test_create_without_a_name_is_refused(store):
     assert store.list() == []
 
 
+def test_a_crash_mid_write_never_corrupts_project_json(store, monkeypatch):
+    """`ProjectStore._write` used to write `project.json` directly - a crash mid-write could leave a
+    reader looking at a truncated file. Same atomic write-then-rename `pipeline._put` already relies
+    on for `selection.json`/`plan.json`, now shared via `_json.atomic_write`."""
+    made = store.create("Original")
+    good = (store.paths(made.id).root / "project.json").read_text(encoding="utf-8")
+
+    real_replace = Path.replace
+
+    def crash_before_replace(self, target):
+        raise OSError("simulated crash")
+
+    monkeypatch.setattr(Path, "replace", crash_before_replace)
+    with pytest.raises(InvalidInput, match="could not be saved"):
+        store.rename(made.id, "Renamed")
+
+    monkeypatch.setattr(Path, "replace", real_replace)
+    assert (store.paths(made.id).root / "project.json").read_text(encoding="utf-8") == good
+    assert store.get(made.id).name == "Original"
+
+
 def test_attaching_a_folder_records_the_path_and_copies_nothing(store, codebase):
     project = store.create("My App")
     resource = store.attach(project.id, str(codebase))
@@ -191,4 +212,20 @@ def test_chat_round_trips(tmp_path):
     log.append("assistant", "on it")
     messages = log.read()
     assert [m.role for m in messages] == ["user", "assistant"]
-    assert messages[0].content == "standup tomorrow"
+
+
+def test_a_corrupt_project_file_is_a_clean_error_not_a_crash(store):
+    made = store.create("Demo")
+    (store.paths(made.id).root / "project.json").write_text("not json", encoding="utf-8")
+
+    with pytest.raises(InvalidInput, match="corrupt"):
+        store.get(made.id)
+
+
+def test_a_corrupt_chat_line_is_a_clean_error_not_a_crash(tmp_path):
+    log = ChatLog(tmp_path / "chat")
+    log.append("user", "standup tomorrow")
+    (tmp_path / "chat" / "messages.jsonl").open("a", encoding="utf-8").write("not json\n")
+
+    with pytest.raises(InvalidInput, match="corrupt"):
+        log.read()

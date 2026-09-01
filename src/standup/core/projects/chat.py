@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
+from standup.core._json import load_json
 from standup.core.models import ChatMessage
 
 
@@ -21,4 +22,8 @@ class ChatLog:
         if not self._file.is_file():
             return []
         lines = self._file.read_text(encoding="utf-8").splitlines()
-        return [ChatMessage.model_validate_json(line) for line in lines if line.strip()]
+        return [
+            load_json(ChatMessage, line, "A line in this project's chat log")
+            for line in lines
+            if line.strip()
+        ]

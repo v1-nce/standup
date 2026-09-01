@@ -2,9 +2,11 @@
 .env*
 !.env.example
 
-# Local benchmark resources — real machine-specific paths, never exposed
-benchmarks/test_set.py
+# Local benchmark resources — real machine-specific paths and personal files, never exposed
+benchmarks/resources.py
+benchmarks/dataset/
 benchmarks/.quality-cache/
+benchmarks/results/
 
 # Environments
 .venv/
@@ -41,6 +43,7 @@ docs/
 CLAUDE.md
 AGENTS.md
 .codex
+.graff
 
 .DS_Store
 Thumbs.db

@@ -58,12 +58,7 @@ def candidates(index: Index, scope: Scope) -> list[Candidate]:
             touched.setdefault(path, []).append(commit.sha)
 
     def candidate(path: str) -> Candidate:
-        return Candidate(
-            id=path,
-            title=PurePosixPath(path).name,
-            paths=[path],
-            commits=touched.get(path, []),
-        )
+        return Candidate(id=path, paths=[path], commits=touched.get(path, []))
 
     indexed = {facts.path for facts in index.files}
     windowed = scope.since or scope.until

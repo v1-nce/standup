@@ -254,8 +254,6 @@ export interface components {
         Candidate: {
             /** Id */
             id: string;
-            /** Title */
-            title: string;
             /**
              * Paths
              * @default []
@@ -267,13 +265,18 @@ export interface components {
              */
             commits: string[];
         };
-        /** ChatMessage */
+        /**
+         * ChatMessage
+         * @description A `command` entry is what a round actually did - the same outcome line `results` carries
+         *     within a turn, persisted so the next turn has it too. Never written by a client; `ChatSend`
+         *     covers what a person may put in the log.
+         */
         ChatMessage: {
             /**
              * Role
              * @enum {string}
              */
-            role: "user" | "assistant";
+            role: "user" | "assistant" | "command";
             /** Content */
             content: string;
             /**
@@ -301,8 +304,40 @@ export interface components {
         /** Deck */
         Deck: {
             selection: components["schemas"]["Selection"];
+            /**
+             * @default {
+             *       "theme": "technical",
+             *       "heading_font": "Aptos Display",
+             *       "body_font": "Aptos"
+             *     }
+             */
+            design: components["schemas"]["DeckDesign"];
             /** Slides */
             slides?: components["schemas"]["Slide"][] | null;
+        };
+        /**
+         * DeckDesign
+         * @description Deck-level art direction. Layout remains semantic; code owns the pixel geometry.
+         */
+        DeckDesign: {
+            /**
+             * Theme
+             * @default technical
+             * @enum {string}
+             */
+            theme: "technical" | "light" | "dark" | "editorial" | "bold";
+            /** Accent */
+            accent?: string | null;
+            /**
+             * Heading Font
+             * @default Aptos Display
+             */
+            heading_font: string;
+            /**
+             * Body Font
+             * @default Aptos
+             */
+            body_font: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -429,6 +464,8 @@ export interface components {
             };
             /** Score */
             score: number;
+            /** Reason */
+            reason?: string | null;
         };
         /**
          * Selection
@@ -466,10 +503,43 @@ export interface components {
             /** Title */
             title: string;
             /**
+             * Subtitle
+             * @default
+             */
+            subtitle: string;
+            /**
              * Bullets
              * @default []
              */
             bullets: string[];
+            /**
+             * Secondary Title
+             * @default
+             */
+            secondary_title: string;
+            /**
+             * Secondary Bullets
+             * @default []
+             */
+            secondary_bullets: string[];
+            /** Image */
+            image?: string | null;
+            /**
+             * Layout
+             * @default auto
+             * @enum {string}
+             */
+            layout: "auto" | "cover" | "section" | "content" | "two_column" | "statement" | "image";
+            /**
+             * Speaker Notes
+             * @default
+             */
+            speaker_notes: string;
+            /**
+             * Elements
+             * @default []
+             */
+            elements: components["schemas"]["VisualElement"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -483,6 +553,90 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * VisualElement
+         * @description One editable layer on a normalized 100×100 slide canvas.
+         */
+        VisualElement: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "text" | "shape" | "line" | "image";
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+            /** Width */
+            width: number;
+            /** Height */
+            height: number;
+            /**
+             * Text
+             * @default
+             */
+            text: string;
+            /** Image */
+            image?: string | null;
+            /**
+             * Shape
+             * @default rectangle
+             * @enum {string}
+             */
+            shape: "rectangle" | "rounded" | "ellipse" | "triangle" | "chevron";
+            /**
+             * Fill
+             * @default transparent
+             */
+            fill: string;
+            /**
+             * Stroke
+             * @default transparent
+             */
+            stroke: string;
+            /**
+             * Stroke Width
+             * @default 0
+             */
+            stroke_width: number;
+            /**
+             * Color
+             * @default text
+             */
+            color: string;
+            /**
+             * Font Size
+             * @default 20
+             */
+            font_size: number;
+            /**
+             * Font Weight
+             * @default regular
+             * @enum {string}
+             */
+            font_weight: "regular" | "semibold" | "bold";
+            /** Font Family */
+            font_family?: string | null;
+            /**
+             * Align
+             * @default left
+             * @enum {string}
+             */
+            align: "left" | "center" | "right";
+            /**
+             * Valign
+             * @default top
+             * @enum {string}
+             */
+            valign: "top" | "middle" | "bottom";
+            /**
+             * Rotation
+             * @default 0
+             */
+            rotation: number;
         };
     };
     responses: never;

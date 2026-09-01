@@ -1,0 +1,16 @@
+{
+  "name": "recent-auth",
+  "suite": "recurring-regression",
+  "fixture": "recurring",
+  "request": "Give me two slides on the recent auth session work.",
+  "keywords": ["auth", "session", "token"],
+  "scope": {
+    "since": "2026-08-12T00:00:00Z",
+    "until": "2026-08-15T00:00:00Z"
+  },
+  "slide_budget": 2,
+  "relevance": {
+    "src/auth/session.py": 2,
+    "src/auth/token.py": 2
+  }
+}

@@ -1,5 +1,6 @@
 {
   "name": "matplotlib",
+  "suite": "onboarding",
   "repo": "https://github.com/matplotlib/matplotlib.git",
   "tag": "v1.0.1",
   "talk": "The Architecture of Open Source Applications, Vol. 2, ch. 12 (Hunter & Droettboom) - https://aosabook.org/en/v2/matplotlib.html",

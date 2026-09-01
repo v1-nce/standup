@@ -1,0 +1,23 @@
+{
+  "name": "puppet",
+  "suite": "onboarding",
+  "repo": "https://github.com/puppetlabs/puppet.git",
+  "tag": "2.7.0",
+  "talk": "The Architecture of Open Source Applications, Vol. 2, ch. 11 (Luke Kanies) - https://aosabook.org/en/v2/puppet.html",
+  "request": "Explain the architecture: how resources, the catalog, and the transaction system apply a configuration.",
+  "keywords": ["resource", "catalog", "transaction", "provider", "parser", "type"],
+  "slide_budget": 10,
+  "covered": [
+    "lib/puppet/type.rb",
+    "lib/puppet/resource.rb",
+    "lib/puppet/resource/type.rb",
+    "lib/puppet/transaction.rb",
+    "lib/puppet/simple_graph.rb",
+    "lib/puppet/indirector.rb",
+    "lib/puppet/provider.rb",
+    "lib/puppet/parser.rb",
+    "lib/puppet/parser/lexer.rb",
+    "lib/puppet/parser/compiler.rb",
+    "lib/puppet/parser/ast.rb"
+  ]
+}

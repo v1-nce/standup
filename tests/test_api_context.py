@@ -56,6 +56,23 @@ async def test_starting_indexing_marks_the_project_busy_before_work_runs():
             await asyncio.sleep(0.02)
 
 
+async def test_an_unexpected_failure_in_a_job_is_reported_not_swallowed():
+    """`_run`'s catch-all was only ever exercised with a `StandupError`, caught by the narrower
+    branch above it - nothing drove a genuinely unexpected exception through this one."""
+    async def boom():
+        raise RuntimeError("boom")
+
+    job = jobs.start("thinking", boom())
+    for _ in range(200):
+        if jobs.read_job(job.id).state != "running":
+            break
+        await asyncio.sleep(0.01)
+
+    finished = jobs.read_job(job.id)
+    assert finished.state == "failed"
+    assert finished.detail == "RuntimeError: boom"
+
+
 def test_a_new_project_has_nothing_attached(client, empty):
     assert client.get(f"/projects/{empty}/context").json() == []
 

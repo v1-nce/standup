@@ -1,5 +1,6 @@
 """Git history → commits. The record of what actually happened, against which the prompt is a hint."""
 
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +15,22 @@ _RECORD = "\x1e"
 _FIELD = "\x1f"
 _FORMAT = f"{_RECORD}%H{_FIELD}%aI{_FIELD}%an{_FIELD}%s"
 
+# `--numstat` renders a rename as `prefix{old => new}suffix` when old and new share an affix, or
+# bare `old => new` when they share nothing. Left unresolved, the whole expression reads as one
+# fabricated path - real churn credit for the file as it exists today is lost, and a candidate for
+# a path that never existed appears in its place.
+_BRACE_RENAME = re.compile(r"^(.*)\{(.*) => (.*)\}(.*)$")
+_BARE_RENAME = re.compile(r"^(.*) => (.*)$")
+
+
+def _resolved_path(path: str) -> str:
+    brace = _BRACE_RENAME.match(path)
+    if brace:
+        prefix, _old, new, suffix = brace.groups()
+        return f"{prefix}{new}{suffix}"
+    bare = _BARE_RENAME.match(path)
+    return bare.group(2) if bare else path
+
 
 def _numstat(line: str) -> tuple[int, int, str] | None:
     parts = line.split("\t")
@@ -23,7 +40,7 @@ def _numstat(line: str) -> tuple[int, int, str] | None:
     return (
         int(insertions) if insertions.isdigit() else 0,
         int(deletions) if deletions.isdigit() else 0,
-        path,
+        _resolved_path(path),
     )
 
 

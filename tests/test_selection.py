@@ -6,7 +6,7 @@ from standup.core.models import Candidate, Commit, FileFacts, Index, Scope
 from standup.core.selection import choose
 from standup.core.selection.diversity import _overlap, ordered
 from standup.core.selection.score import WEIGHTS, relevance
-from standup.core.selection.signals import SIGNALS, measure
+from standup.core.selection.signals import SIGNALS, _churn, measure
 
 TODAY = datetime(2026, 8, 3, tzinfo=UTC)
 
@@ -49,6 +49,28 @@ def candidates():
     ]
 
 
+def test_churn_compresses_a_mega_commit_instead_of_letting_it_zero_out_a_real_change():
+    """Linear min-max against a lockfile-sized diff used to pin every genuine change near 0 -
+    log1p keeps the ordering (a bigger real change still outranks a tiny one) while stopping one
+    outlier from swallowing the whole scale."""
+    tiny = Commit(sha="t", authored_at=TODAY, author="v", message="m", changes={"typo.py": 1})
+    normal = Commit(sha="n", authored_at=TODAY, author="v", message="m", changes={"app.py": 200})
+    mega = Commit(sha="m", authored_at=TODAY, author="v", message="m", changes={"lockfile": 200_000})
+    index = Index(fingerprint="f", built_at=TODAY, commits=[tiny, normal, mega])
+    candidates = [
+        Candidate(id="typo.py", paths=["typo.py"], commits=["t"]),
+        Candidate(id="app.py", paths=["app.py"], commits=["n"]),
+        Candidate(id="lockfile", paths=["lockfile"], commits=["m"]),
+    ]
+
+    raw = _churn(candidates, index, Scope(slide_budget=3))
+    assert raw["typo.py"] < raw["app.py"] < raw["lockfile"]  # ordering preserved
+
+    scaled = measure(candidates, index, Scope(slide_budget=3))
+    # Linear would put app.py at ~(200-1)/200_000 =~ 0.001; log1p keeps it a real fraction of scale.
+    assert scaled["app.py"]["churn"] > 0.3
+
+
 def test_every_signal_is_reported_for_every_candidate(index, candidates):
     signals = measure(candidates, index, Scope(slide_budget=2))
     assert set(signals) == {c.id for c in candidates}
@@ -75,6 +97,29 @@ def test_every_registered_signal_carries_a_weight():
     assert set(WEIGHTS) == set(SIGNALS)
 
 
+def test_affinity_does_not_match_a_keyword_inside_an_unrelated_word():
+    """"auth" used to match inside "author" - a substring count, not a mention."""
+    candidate = Candidate(id="notes", paths=["notes/one.md"])
+    unrelated = Index(
+        fingerprint="f",
+        built_at=TODAY,
+        files=[FileFacts(path="notes/one.md", content_hash="h", excerpt="Written by the author.")],
+    )
+    hits = SIGNALS["affinity"]([candidate], unrelated, Scope(keywords=["auth"], slide_budget=1))
+    assert hits.get("notes", 0.0) == 0.0
+
+
+def test_affinity_still_matches_the_keyword_as_its_own_word():
+    candidate = Candidate(id="notes", paths=["notes/one.md"])
+    related = Index(
+        fingerprint="f",
+        built_at=TODAY,
+        files=[FileFacts(path="notes/one.md", content_hash="h", excerpt="Reworked auth end to end.")],
+    )
+    hits = SIGNALS["affinity"]([candidate], related, Scope(keywords=["auth"], slide_budget=1))
+    assert hits.get("notes", 0.0) == 1.0
+
+
 def test_affinity_credits_whichever_of_a_candidate_s_paths_carries_the_excerpt():
     """_churn treats candidate.paths as the file list; _affinity used to only check candidate.id."""
     candidate = Candidate(id="notes", title="notes", paths=["notes/one.md", "notes/two.md"])
@@ -90,7 +135,10 @@ def test_affinity_credits_whichever_of_a_candidate_s_paths_carries_the_excerpt()
     assert hits.get("notes", 0.0) > 0
 
 
-def test_overlap_sees_a_shared_directory_and_a_shared_commit():
+def test_overlap_sees_a_shared_directory_but_not_a_shared_commit():
+    """A shared commit used to count as overlap too, on the theory that shared authorship means
+    shared coverage - backwards: a commit spanning several files is one change, and MMR splitting
+    it across slides for "diversity" is a worse deck, not a more diverse one."""
     here = Candidate(id="app/src/auth/login.py", title="a", commits=["x"])
     sibling = Candidate(id="app/src/auth/session.py", title="b", commits=["y"])
     stranger = Candidate(id="app/docs/guide.md", title="c", commits=["z"])
@@ -98,7 +146,7 @@ def test_overlap_sees_a_shared_directory_and_a_shared_commit():
 
     assert _overlap(here, sibling) == 1.0
     assert _overlap(here, stranger) == 0.0
-    assert _overlap(here, co_committed) == 1.0
+    assert _overlap(here, co_committed) == 0.0
 
 
 def test_overlap_never_conflates_two_different_resources():
@@ -106,6 +154,14 @@ def test_overlap_never_conflates_two_different_resources():
     doc_a = Candidate(id="docA/notes.md", title="a")
     doc_b = Candidate(id="docB/readme.md", title="b")
     assert _overlap(doc_a, doc_b) == 0.0
+
+
+def test_overlap_treats_two_unrelated_root_files_as_no_information_not_maximal():
+    """Both sitting at their resource's root used to hit a `0/0 -> 1.0` branch, so README.md and
+    Dockerfile - sharing nothing but the absence of a subdirectory - scored as maximally redundant."""
+    readme = Candidate(id="app/README.md", title="a")
+    dockerfile = Candidate(id="app/Dockerfile", title="b")
+    assert _overlap(readme, dockerfile) == 0.0
 
 
 def test_overlap_needs_a_shared_prefix_not_just_a_same_depth_folder_name():
@@ -125,14 +181,46 @@ def rivals():
     ]
 
 
-def test_a_near_tie_goes_to_the_untouched_subsystem(rivals):
-    scores = {"app/src/auth/a.py": 1.0, "app/src/auth/b.py": 0.72, "app/src/billing/c.py": 0.70}
+def test_only_a_razor_thin_tie_goes_to_the_untouched_subsystem(rivals):
+    """LAMBDA=0.95 (see diversity.py) needs a normalized gap under ~5% to flip a pick - measured
+    2026-08-14 against 3 real quality-benchmark cases, where a looser near-tie threshold (0.7) cost
+    average recall almost exactly in half. This is what diversity can still do at that weight."""
+    scores = {"app/src/auth/a.py": 1.0, "app/src/auth/b.py": 0.50, "app/src/billing/c.py": 0.49}
     assert [c.id for c in ordered(rivals, scores, 2)] == ["app/src/auth/a.py", "app/src/billing/c.py"]
+
+
+def test_a_near_tie_that_used_to_flip_no_longer_does(rivals):
+    """The exact case that motivated LAMBDA=0.7 originally - proof the retuned weight is a real,
+    deliberate change of behaviour, not just a smaller number. Real architectures often concentrate
+    in one directory; pushing away from it here was the wrong call, per the same measurement."""
+    scores = {"app/src/auth/a.py": 1.0, "app/src/auth/b.py": 0.72, "app/src/billing/c.py": 0.70}
+    assert [c.id for c in ordered(rivals, scores, 2)] == ["app/src/auth/a.py", "app/src/auth/b.py"]
 
 
 def test_diversity_does_not_overturn_a_wide_relevance_gap(rivals):
     scores = {"app/src/auth/a.py": 1.0, "app/src/auth/b.py": 0.9, "app/src/billing/c.py": 0.5}
     assert [c.id for c in ordered(rivals, scores, 2)] == ["app/src/auth/a.py", "app/src/auth/b.py"]
+
+
+def test_ordered_is_invariant_to_relevances_raw_scale():
+    """The actual thing S1 fixed: `ordered()` must normalise before weighing, so the same relative
+    picture - not the absolute numbers - drives the outcome. `relevance()` sums WEIGHTS to 0-5.1, not
+    0-1; scored directly against raw values in that range, the old code let an outlier candidate
+    compress every real gap toward the diversity ceiling's noise floor. Proven here by scoring the
+    identical relative shape once at 0-1 and once at a realistic 0-5 range and requiring the same
+    pick both times."""
+    candidates = [
+        Candidate(id="app/src/auth/a.py", title="a"),
+        Candidate(id="app/src/auth/b.py", title="b"),  # redundant with a: same directory
+        Candidate(id="app/billing/c.py", title="c"),  # a different subsystem entirely
+        Candidate(id="app/other/d.py", title="d"),  # far below the rest, only stretches the range
+    ]
+    small = {"app/src/auth/a.py": 1.0, "app/src/auth/b.py": 0.6, "app/billing/c.py": 0.4, "app/other/d.py": 0.0}
+    scaled_up = {path: value * 5 for path, value in small.items()}
+    assert (
+        [c.id for c in ordered(candidates, small, 2)]
+        == [c.id for c in ordered(candidates, scaled_up, 2)]
+    )
 
 
 def test_selection_carries_what_was_cut_and_why(index, candidates):
@@ -144,6 +232,11 @@ def test_selection_carries_what_was_cut_and_why(index, candidates):
     for entry in [*selection.chosen, *selection.cut]:
         assert set(entry.signals) == set(SIGNALS)
         assert entry.score == pytest.approx(relevance(entry.signals))
+
+    # "and why" used to be untested - a cut item narrates the same score/signals a chosen one
+    # carries silently; a chosen item needs no such explanation.
+    assert all(entry.reason is None for entry in selection.chosen)
+    assert all(entry.reason and "below the cutoff" in entry.reason for entry in selection.cut)
 
 
 def test_the_same_index_and_request_choose_identically_twice(index, candidates):

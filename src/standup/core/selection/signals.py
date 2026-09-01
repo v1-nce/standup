@@ -3,6 +3,8 @@
 A signal reports only the candidates it has something to say about; anything absent scores 0.
 """
 
+import math
+import re
 from collections.abc import Callable
 
 from standup.core.models import Candidate, Commit, Index, Scope
@@ -26,7 +28,10 @@ def _churn(candidates: list[Candidate], index: Index, scope: Scope) -> dict[str,
         )
         for candidate in candidates
     }
-    return {path: size for path, size in sizes.items() if size}
+    # log1p, not the raw line count: churn is power-law - one mega-commit or lockfile diff sits
+    # orders of magnitude above everything else, and a linear min-max against it pins every real
+    # change near 0. The compressed scale still orders the same candidates the same way.
+    return {path: math.log1p(size) for path, size in sizes.items() if size}
 
 
 def _recency(candidates: list[Candidate], index: Index, scope: Scope) -> dict[str, float]:
@@ -52,6 +57,9 @@ def _affinity(candidates: list[Candidate], index: Index, scope: Scope) -> dict[s
     terms = [term.lower() for term in [*scope.keywords, *scope.paths] if term]
     if not terms:
         return {}
+    # Bounded the same way `emphasis()` bounds a symbol name: "auth" used to match inside "author".
+    # Stemming/synonyms ("login" vs "session.py") is a separate, larger call - not this one.
+    patterns = [re.compile(rf"(?<!\w){re.escape(term)}(?!\w)") for term in terms]
 
     by_sha = {commit.sha: commit for commit in index.commits}
     excerpts = {facts.path: facts.excerpt for facts in index.files if facts.excerpt}
@@ -64,7 +72,7 @@ def _affinity(candidates: list[Candidate], index: Index, scope: Scope) -> dict[s
                 *(c.message for c in _commits(candidate, by_sha)),
             ]
         ).lower()
-        found = float(sum(haystack.count(term) for term in terms))
+        found = float(sum(len(pattern.findall(haystack)) for pattern in patterns))
         if found:
             hits[candidate.id] = found
     return hits
@@ -79,7 +87,9 @@ SIGNALS: dict[str, Signal] = {
 }
 
 
-def _normalised(raw: dict[str, float]) -> dict[str, float]:
+def normalised(raw: dict[str, float]) -> dict[str, float]:
+    """Min-max to 0-1. Shared with `diversity.ordered`, which needs relevance on the same scale it
+    normalises overlap to - `LAMBDA` only trades them off correctly when both sides are 0-1."""
     if not raw:
         return {}
     low, high = min(raw.values()), max(raw.values())
@@ -92,6 +102,6 @@ def measure(candidates: list[Candidate], index: Index, scope: Scope) -> dict[str
     """Every signal, normalised to 0-1 across the candidate set, keyed by candidate id."""
     scored = {candidate.id: dict.fromkeys(SIGNALS, 0.0) for candidate in candidates}
     for name, signal in SIGNALS.items():
-        for path, value in _normalised(signal(candidates, index, scope)).items():
+        for path, value in normalised(signal(candidates, index, scope)).items():
             scored[path][name] = value
     return scored

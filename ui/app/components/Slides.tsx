@@ -16,15 +16,20 @@ export function Slides({ deck }: { deck: Deck | null }) {
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3" onWheel={onWheel}>
       <div className="flex min-h-0 flex-1 items-center justify-center overscroll-contain border border-rule p-4">
         <div key={showing?.candidate_id ?? "empty"} className="rise w-full max-w-3xl">
-          <SlideFace
-            bullets={showing?.bullets ?? []}
-            label={
-              showing
-                ? `Slide ${active + 1} / ${slides.length}` + (showing.free ? " · custom" : "")
-                : "No deck yet"
-            }
-            title={showing?.title ?? "Ask for one in the chat"}
-          />
+          {showing && deck ? (
+            <SlideFace
+              design={deck.design}
+              label={`Slide ${active + 1} / ${slides.length}` + (showing.free ? " · custom" : "")}
+              slide={showing}
+            />
+          ) : (
+            <article className="flex aspect-video w-full flex-col justify-between border border-rule bg-surface p-6 sm:p-10">
+              <span className="label">No deck yet</span>
+              <h2 className="text-2xl leading-tight font-semibold text-balance sm:text-4xl">
+                Ask for one in the chat
+              </h2>
+            </article>
+          )}
         </div>
       </div>
 
@@ -47,9 +52,9 @@ export function Slides({ deck }: { deck: Deck | null }) {
               style={{ scale: THUMB / FACE, width: FACE }}
             >
               <SlideFace
-                bullets={slide.bullets}
+                design={deck!.design}
                 label={`Slide ${index + 1} / ${slides.length}` + (slide.free ? " · custom" : "")}
-                title={slide.title}
+                slide={slide}
               />
             </div>
           </button>

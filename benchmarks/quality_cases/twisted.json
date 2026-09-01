@@ -1,0 +1,20 @@
+{
+  "name": "twisted",
+  "suite": "onboarding",
+  "repo": "https://github.com/twisted/twisted.git",
+  "tag": "twisted-11.0.0",
+  "talk": "The Architecture of Open Source Applications, Vol. 2, ch. 14 (Jessica McKellar) - https://aosabook.org/en/v2/twisted.html",
+  "request": "Explain the architecture: how the reactor decouples protocols from transports and manages asynchronous callback chains.",
+  "keywords": ["reactor", "transport", "protocol", "deferred", "interfaces", "plugin"],
+  "slide_budget": 8,
+  "covered": [
+    "twisted/internet/interfaces.py",
+    "twisted/internet/defer.py",
+    "twisted/internet/protocol.py",
+    "twisted/internet/selectreactor.py",
+    "twisted/internet/epollreactor.py",
+    "twisted/internet/kqreactor.py",
+    "twisted/internet/tcp.py",
+    "twisted/plugin.py"
+  ]
+}

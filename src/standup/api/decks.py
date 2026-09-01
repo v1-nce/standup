@@ -6,7 +6,6 @@ from fastapi.responses import FileResponse
 from standup.api import jobs, projects
 from standup.core import pipeline
 from standup.core.models import Deck, SelectionEdit
-from standup.errors import Busy
 
 router = APIRouter(prefix="/projects/{project_id}/deck", tags=["deck"])
 
@@ -21,7 +20,7 @@ def read_deck(project_id: str) -> Deck:
 @router.put("/selection")
 def edit_selection(project_id: str, body: SelectionEdit) -> Deck:
     if jobs.busy(project_id):
-        raise Busy(f"{project_id} is already working")
+        raise jobs.already_working()
     return pipeline.edit(projects.get_store(), project_id, body.keep)
 
 

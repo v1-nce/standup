@@ -9,7 +9,7 @@ from standup.api import jobs, projects
 from standup.core import index, pipeline
 from standup.core.models import ContextAdd, Resource
 from standup.core.projects import ProjectStore
-from standup.errors import Busy, StandupError
+from standup.errors import StandupError
 
 router = APIRouter(prefix="/projects/{project_id}/context", tags=["context"])
 
@@ -75,7 +75,7 @@ async def add_files(project_id: str, files: list[UploadFile]) -> jobs.Job:
 async def remove_context(project_id: str, resource_id: str) -> None:
     """The resource, its copy, its index, and the deck it produced. Removed means removed."""
     if jobs.busy(project_id):
-        raise Busy(f"{project_id} is already working")
+        raise jobs.already_working()
     store = projects.get_store()
     await asyncio.to_thread(store.detach, project_id, resource_id)
     await asyncio.to_thread(pipeline.forget, store, project_id, resource_id)

@@ -1,15 +1,18 @@
 import threading
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
+from pptx import Presentation
 
 from standup.core import index as index_module
 from standup.core import pipeline
 from standup.core.gather import candidates
+from standup.core.index import docs
 from standup.core.models import Scope, Slide
 from standup.core.selection import choose
 from standup.errors import InvalidInput, NotFound
-from tests.conftest import pdf_saying
+from tests.conftest import TINY_PNG, pdf_saying
 
 
 def slides_for(deck) -> list[Slide]:
@@ -29,6 +32,22 @@ def test_selecting_writes_a_deck_you_can_read_back(store, project, index):
     assert all(entry.signals for entry in deck.selection.chosen)
 
 
+def test_sources_reads_the_real_file_a_candidate_id_points_at(store, project, index):
+    """The index stores no content for a repo file, so a slide could only restate a commit message.
+    The file is on disk the whole time; `sources` is what finally reaches it."""
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    ids = [entry.candidate.id for entry in deck.selection.chosen]
+
+    found = pipeline.sources(store, project.id, ids)
+    assert any("class Router" in text for text in found.values())
+    assert all(len(text) <= pipeline.SOURCE_CHARS for text in found.values())
+
+
+def test_sources_stays_quiet_about_a_file_that_is_no_longer_there(store, project, index):
+    """A deleted file is still real work, and its commits still describe it."""
+    assert pipeline.sources(store, project.id, ["nonexistent-resource/gone.py"]) == {}
+
+
 def test_selecting_chooses_what_choose_would_have(store, project, index):
     scope = Scope(slide_budget=2)
     deck = pipeline.select(store, project.id, index, "standup", scope)
@@ -38,13 +57,40 @@ def test_selecting_chooses_what_choose_would_have(store, project, index):
     ]
 
 
-def test_a_second_select_replaces_the_deck_and_its_slides(store, project, index):
+def test_a_second_select_keeps_a_slide_whose_candidate_is_still_chosen(store, project, index):
+    """Used to delete every slide outright on any re-select, which is what made an ordinary
+    follow-up wipe a finished deck - "the slides keep resetting"."""
     first = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
     pipeline.write(store, project.id, index, slides_for(first))
 
     replaced = pipeline.select(store, project.id, index, "something else", Scope(slide_budget=2))
     assert replaced.selection.request == "something else"
+    assert pipeline.read(store, project.id).slides == slides_for(first)
+
+
+def test_a_second_select_drops_a_slide_whose_candidate_is_no_longer_chosen(store, project, index):
+    """A window that excludes every prior candidate is a real change of scope, and a slide with no
+    candidate behind it has genuinely lost the evidence it was written from."""
+    first = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    pipeline.write(store, project.id, index, slides_for(first))
+
+    future = Scope(slide_budget=2, since=datetime(2099, 1, 1, tzinfo=UTC))
+    pipeline.select(store, project.id, index, "next year", future)
     assert pipeline.read(store, project.id).slides is None
+
+
+def test_a_second_select_does_not_undo_a_keep_established_interleave(store, project, index):
+    """Same bug shape as `write`'s reset above, left unpatched in `_surviving`: it still rebuilt the
+    order as every evidence slide then every free one, so a `keep`-pinned free slide (a title screen)
+    got thrown to the back on the very next re-select, even when nothing it depended on changed."""
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    pipeline.write(store, project.id, index, slides_for(deck))
+    pipeline.write(store, project.id, index, [Slide(candidate_id="title", free=True, title="Standup")])
+    order = ["title", *[e.candidate.id for e in deck.selection.chosen]]
+    pipeline.edit(store, project.id, order)
+
+    reselected = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    assert [s.candidate_id for s in reselected.slides] == order
 
 
 def test_an_edit_is_obeyed_literally(store, project, index):
@@ -193,6 +239,18 @@ def test_a_free_slide_needs_no_candidate(store, project, index):
     assert written.slides == [free]
 
 
+def test_a_deck_cannot_be_completed_with_only_free_slides(store, project, index):
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    slides = [
+        Slide(candidate_id="intro", free=True, title="Intro"),
+        Slide(candidate_id="wrap", free=True, title="Wrap"),
+    ]
+
+    pipeline.write(store, project.id, index, slides)
+    with pytest.raises(InvalidInput, match="evidence slides"):
+        pipeline.render(store, project.id)
+
+
 def test_a_new_free_slide_lands_after_the_evidence_slides(store, project, index):
     deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
     pipeline.write(store, project.id, index, slides_for(deck))
@@ -216,6 +274,24 @@ def test_keep_can_interleave_a_free_slide_among_evidence_slides(store, project, 
     assert pipeline.render(store, project.id).is_file()
 
 
+def test_writing_a_different_slide_does_not_undo_a_keep_established_interleave(store, project, index):
+    """Real bug, reported as "you reshifted the introduction slide back" after nothing more than
+    adding an image to a different slide. `write` used to rebuild the whole order as every evidence
+    slide then every free one, discarding wherever `keep` had just placed a free slide among them."""
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    pipeline.write(store, project.id, index, slides_for(deck))
+    pipeline.write(store, project.id, index, [Slide(candidate_id="title", free=True, title="Standup")])
+    order = ["title", *[e.candidate.id for e in deck.selection.chosen]]
+    pipeline.edit(store, project.id, order)
+
+    evidence_id = deck.selection.chosen[0].candidate.id
+    written = pipeline.write(
+        store, project.id, index,
+        [Slide(candidate_id=evidence_id, title="Renamed", bullets=["still true"])],
+    )
+    assert [s.candidate_id for s in written.slides] == order
+
+
 def test_keep_without_the_free_id_drops_it(store, project, index):
     deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
     pipeline.write(store, project.id, index, slides_for(deck))
@@ -224,6 +300,25 @@ def test_keep_without_the_free_id_drops_it(store, project, index):
     kept = [e.candidate.id for e in deck.selection.chosen]
     reordered = pipeline.edit(store, project.id, kept)
     assert "title" not in [s.candidate_id for s in reordered.slides]
+
+
+async def test_rendering_an_image_slide_embeds_the_attached_files_actual_bytes(store, project, monkeypatch):
+    """The resource an image id names is a lone attached file - its `location` is the file itself,
+    not a folder to walk into."""
+    monkeypatch.setattr(docs, "_DESCRIBED", {})
+    monkeypatch.setattr(docs, "describe_image_sync", lambda data, media_type, *, prompt: "A chart")
+    resource = store.attach_file(project.id, "chart.png", TINY_PNG)
+    index = await pipeline.indexed(store, project.id)
+
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=1))
+    pipeline.write(store, project.id, index, slides_for(deck))
+    image = Slide(candidate_id="wrap", free=True, title="Wrap", image=f"{resource.id}/chart.png")
+    pipeline.write(store, project.id, index, [image])
+
+    written = pipeline.render(store, project.id)
+    reopened = Presentation(str(written))
+    picture = next(shape for shape in reopened.slides[-1].shapes if hasattr(shape, "image"))
+    assert picture.image.blob == TINY_PNG
 
 
 def test_a_free_flag_on_a_real_candidate_is_refused(store, project, index):
@@ -317,13 +412,20 @@ def test_reordering_carries_the_slides_with_it(store, project, index):
     assert [s.candidate_id for s in reordered.slides] == backwards
 
 
-def test_promoting_a_cut_item_leaves_it_needing_a_slide(store, project, index):
+def test_promoting_a_cut_item_leaves_it_needing_a_slide_without_losing_what_was_already_written(
+    store, project, index
+):
+    """A keep that brings back a never-written cut candidate used to wipe every slide already
+    written for the rest of the deck, not just leave the new one unwritten."""
     deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=1))
-    pipeline.write(store, project.id, index, slides_for(deck))
+    written = pipeline.write(store, project.id, index, slides_for(deck))
+    already_written = written.slides[0].candidate_id
 
     everything = [e.candidate.id for e in [*deck.selection.chosen, *deck.selection.cut]]
     promoted = pipeline.edit(store, project.id, everything)
-    assert promoted.slides is None
+
+    assert [e.candidate.id for e in promoted.selection.chosen] == everything
+    assert [s.candidate_id for s in promoted.slides] == [already_written]
 
 
 def test_rendering_needs_slides_first(store, project, index):
@@ -341,3 +443,38 @@ def test_rendering_writes_a_deck_file(store, project, index):
 def test_a_project_with_no_deck_yet_is_not_found(store, project):
     with pytest.raises(NotFound):
         pipeline.read(store, project.id)
+
+
+def test_a_corrupt_selection_file_is_a_clean_error_not_a_crash(store, project, index):
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=1))
+    (store.paths(project.id).deck / pipeline.SELECTION_FILE).write_text("not json", encoding="utf-8")
+
+    with pytest.raises(InvalidInput, match="corrupt"):
+        pipeline.read(store, project.id)
+
+
+def test_a_corrupt_plan_file_is_a_clean_error_not_a_crash(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=1))
+    pipeline.write(store, project.id, index, slides_for(deck))
+    (store.paths(project.id).deck / pipeline.PLAN_FILE).write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(InvalidInput, match="corrupt"):
+        pipeline.read(store, project.id)
+
+
+def test_a_crash_mid_write_never_corrupts_the_file_a_reader_opens(store, project, index, monkeypatch):
+    first = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    good = (store.paths(project.id).deck / pipeline.SELECTION_FILE).read_text(encoding="utf-8")
+
+    real_replace = Path.replace
+
+    def crash_before_replace(self, target):
+        raise OSError("simulated crash")
+
+    monkeypatch.setattr(Path, "replace", crash_before_replace)
+    with pytest.raises(OSError, match="simulated crash"):
+        pipeline.select(store, project.id, index, "standup again", Scope(slide_budget=1))
+
+    monkeypatch.setattr(Path, "replace", real_replace)
+    assert (store.paths(project.id).deck / pipeline.SELECTION_FILE).read_text(encoding="utf-8") == good
+    assert pipeline.read(store, project.id) == first

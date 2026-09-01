@@ -2,9 +2,17 @@
 
 from standup.core.models import Candidate, Index, Scope, Scored, Selection
 from standup.core.selection.diversity import ordered
-from standup.core.selection.score import relevance
+from standup.core.selection.score import WEIGHTS, relevance
 from standup.core.selection.signals import measure
 from standup.errors import NotFound
+
+
+def _reason(item_signals: dict[str, float], score: float, cutoff: float | None) -> str:
+    """A cut item's own signals and score, already computed - narrated for a human, not derived
+    fresh. Ranking itself is unaffected; this only explains a decision already made."""
+    dominant = max(item_signals, key=lambda name: WEIGHTS[name] * item_signals[name])
+    below = f", {cutoff - score:.2f} below the cutoff" if cutoff is not None else ""
+    return f"scored {score:.2f}, mostly from {dominant}{below}"
 
 
 def choose(index: Index, scope: Scope, candidates: list[Candidate], *, request: str) -> Selection:
@@ -13,18 +21,22 @@ def choose(index: Index, scope: Scope, candidates: list[Candidate], *, request: 
 
     chosen = ordered(candidates, scores, scope.slide_budget)
     taken = {candidate.id for candidate in chosen}
+    cutoff = min((scores[c.id] for c in chosen), default=None)
 
-    def scored(candidate: Candidate) -> Scored:
+    def scored(candidate: Candidate, *, cut: bool) -> Scored:
         return Scored(
-            candidate=candidate, signals=signals[candidate.id], score=scores[candidate.id]
+            candidate=candidate,
+            signals=signals[candidate.id],
+            score=scores[candidate.id],
+            reason=_reason(signals[candidate.id], scores[candidate.id], cutoff) if cut else None,
         )
 
     return Selection(
         request=request,
         scope=scope,
-        chosen=[scored(candidate) for candidate in chosen],
+        chosen=[scored(candidate, cut=False) for candidate in chosen],
         cut=[
-            scored(candidate)
+            scored(candidate, cut=True)
             for candidate in sorted(candidates, key=lambda c: (-scores[c.id], c.id))
             if candidate.id not in taken
         ],

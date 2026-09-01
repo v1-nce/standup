@@ -1,13 +1,12 @@
 import httpx
 import pytest
 
-from standup.api import jobs
+from standup.api import jobs, routes
 from standup.api import projects as projects_api
-from standup.api import routes
 from standup.api.app import app
 from standup.core.agent import Turn
 from standup.core.agent.commands import Select, Write
-from standup.core.models import Scope, Slide
+from standup.core.models import Scope, Slide, VisualElement
 from standup.core.projects import ChatLog
 from standup.errors import Upstream
 from tests.conftest import settled
@@ -36,7 +35,16 @@ class Conversation:
                     Write(
                         action="write",
                         slides=[
-                            Slide(candidate_id=item, title="Router", bullets=["one"])
+                            Slide(
+                                candidate_id=item,
+                                title="Router",
+                                bullets=["one"],
+                                elements=[
+                                    VisualElement(
+                                        id="title", kind="text", x=0, y=0, width=100, height=100, text="Router"
+                                    )
+                                ],
+                            )
                             for item in chosen
                         ],
                     )
@@ -65,8 +73,12 @@ async def test_one_message_produces_a_deck_and_a_reply(wired, project):
         assert job["state"] == "done", job["detail"]
 
         history = (await client.get(f"/projects/{project_id}/chat")).json()
-        assert [m["role"] for m in history] == ["user", "assistant"]
-        assert history[1]["content"] == "One slide on the router."
+        assert history[0]["role"] == "user"
+        assert history[-1]["role"] == "assistant"
+        assert history[-1]["content"] == "One slide on the router."
+        # Every command the turn actually ran is now on record too, not just the model's own claim.
+        assert all(m["role"] == "command" for m in history[1:-1])
+        assert history[1:-1], "a turn that wrote a deck ran no commands worth persisting?"
 
         deck = (await client.get(f"/projects/{project_id}/deck")).json()
         assert [s["title"] for s in deck["slides"]] == ["Router"]
@@ -133,6 +145,7 @@ async def test_a_second_message_while_one_is_running_is_refused(wired):
 
         assert first.status_code == 202
         assert second.status_code == 409
+        assert project_id not in second.json()["detail"]
         await settled(client, first.json()["id"])
 
 
@@ -160,3 +173,27 @@ async def test_a_failed_turn_still_closes_the_log_instead_of_orphaning_the_messa
         history = (await client.get(f"/projects/{project.id}/chat")).json()
         assert [m["role"] for m in history] == ["user", "assistant"]
         assert "rate limited" in history[1]["content"]
+
+
+class Broken:
+    """A model call that fails with something other than a `StandupError` - the shape of an
+    unexpected bug in the client itself, not a mapped provider failure."""
+
+    async def structured(self, prompt, schema, *, system=None, max_tokens=None):
+        raise RuntimeError("boom")
+
+
+async def test_a_genuinely_unexpected_failure_still_closes_the_log(store, monkeypatch, project):
+    """`_turn`'s except was only ever exercised with a `StandupError` (`Flaky`, above) - nothing drove
+    a plain, unmapped exception through the same catch."""
+    monkeypatch.setattr(projects_api, "get_store", lambda: store)
+    monkeypatch.setattr(routes, "get_client", Broken)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        accepted = await client.post(f"/projects/{project.id}/chat", json={"content": "standup"})
+        job = await settled(client, accepted.json()["id"])
+        assert job["state"] == "failed"
+
+        history = (await client.get(f"/projects/{project.id}/chat")).json()
+        assert [m["role"] for m in history] == ["user", "assistant"]
+        assert "RuntimeError: boom" in history[1]["content"]

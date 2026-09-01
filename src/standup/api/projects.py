@@ -15,7 +15,6 @@ from standup.core.models import (
     ProjectRename,
 )
 from standup.core.projects import ChatLog, ProjectStore
-from standup.errors import Busy
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -54,7 +53,7 @@ def rename_project(project_id: str, body: ProjectRename) -> Project:
 @router.delete("/{project_id}", status_code=204)
 def delete_project(project_id: str) -> None:
     if jobs.busy(project_id):
-        raise Busy(f"{project_id} is already working")
+        raise jobs.already_working()
     get_store().delete(project_id)
     pipeline.evict(project_id)
     jobs.evict(project_id)
@@ -65,13 +64,20 @@ def read_chat(project_id: str) -> list[ChatMessage]:
     return _chat(project_id).read()
 
 
+_FAILURE_CHARS = 200
+
+
 async def _turn(client: ModelClient, project_id: str, log: ChatLog) -> None:
     """The user's message is appended by `send_message` before this task is scheduled."""
     history = await asyncio.to_thread(log.read)
     try:
-        reply = await agent.converse(client, get_store(), project_id, history)
+        reply = await agent.converse(client, get_store(), project_id, history, log=log)
     except Exception as failure:
-        await asyncio.to_thread(log.append, "assistant", f"Something went wrong: {failure}")
+        # A full pydantic dump can run hundreds of lines; persisting it verbatim meant every future
+        # turn re-read the same giant failure as part of its own prompt, forever. Bounded here to
+        # what actually helps a person reading the transcript, not the model debugging itself.
+        detail = f"{type(failure).__name__}: {failure}"[:_FAILURE_CHARS]
+        await asyncio.to_thread(log.append, "assistant", f"Something went wrong: {detail}")
         raise
     await asyncio.to_thread(log.append, "assistant", reply)
 

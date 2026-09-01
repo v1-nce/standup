@@ -1,24 +1,25 @@
 # Standup
 
-Whatever you need to present → slide deck. Full framing in [docs/SPECS.md](docs/SPECS.md) and [README.md](README.md); system shape in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — read before non-trivial work.
+Whatever you need to present → slide deck. Full framing is in [docs/SPECS.md](docs/SPECS.md) and [README.md](README.md); the system and agent diagrams are maintained in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — read it before non-trivial work.
 
 The user registers resources once — a codebase **and its git history**, documents, past decks — then chats to ask for a deck. Four steps: **index** the registered resources → **gather** what the request puts in play → **select** what belongs → **present** it as slides. Selection is the product.
 
 **One project, one deck.** A project holds one deck, one conversation, and the resources it was given.
 
-**The agent is the only thing that calls the model.** It reads the conversation, issues commands against the deck, and answers — the way Claude Code edits a file. Its three commands (`select`, `keep`, `write`) are all deterministic once chosen, so the loop's own rounds are the entire model spend: one call for conversation, two for an edit, three for a new deck. There is no command for the `.pptx` — slides are the deck, and the file is rendered when it is downloaded. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6 for the budget; it is the number that decides whether this is usable twice a week.
+**The orchestrator is the single owner of a request and the only model entry point.** It reads the conversation, decides which bounded job to delegate, invokes deterministic tools, validates their results, and answers — the way Claude Code edits a file. The current `select`, `keep`, and `write` commands are deterministic execution tools, not a replacement for model judgment. A future specialist may be deployed only by the orchestrator with an isolated, tailored context and explicit job/budget; it cannot call peers or mutate the deck directly. The current budget remains one call for conversation, two for an edit, three for a new deck until a measured staged change proves otherwise. There is no command for the `.pptx` — slides are the deck, and the file is rendered when it is downloaded. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §§6 and 8.2.
 
 **The user does not know what to present.** They have a rough idea and a deadline, twice a week. That is the whole reason the product exists, and the reason selection cannot be delegated back to them.
 
 ## What exists
 
-Verified 2026-08-08. **Backend: 183 tests. Frontend: 28.** Both in CI.
+Verified 2026-08-24. **Backend: 320 tests. Frontend: 40.** Both in CI.
 
 - **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (deterministic scope validation + candidates), selection (five signals, weights, MMR), present (groundedness validation, `.pptx`), the agent loop and its three commands, the job runner, the project store and chat log, the provider seam over Anthropic and Gemini, and the HTTP API over all of it.
 - **Wired end to end** — the GUI reads and writes real projects, sends a message, polls the job, and renders the deck the agent wrote. Types are generated from the backend's OpenAPI schema.
 - **Context is what a project may draw on** — created from a name alone, then given **many folders and many documents** through the `+`. **A folder is named by its path; a document is handed over whole** — a page is never told where a dropped file lives, and that asymmetry is the whole design rather than something to hide. So: a path field with an `Add`, and a drop zone with an `Add file` over `<input type="file">`. Two attempts to make it one control were built and both deleted — an in-app file browser, then the machine's own dialog through `POST /pick` (`ctypes` over `GetOpenFileNameW`, with the filename box carrying a sentinel so one dialog could return a folder). Both worked and both read as vibed. **Nothing platform-specific survives**; the browser does the only part it is allowed to do. A folder is referenced where it lives; a document is copied in, whether picked or dropped. Attaching never returns 409 — indexing queues per project instead of refusing, which is what "one job per project" got wrong. Each resource is indexed and cached on its own; `index.merged` prefixes every path with its resource id, so `repo-a/src/main.py` cannot collide with `repo-b/src/main.py`, and then ranks the whole set **once**. Rank is relative: computed per resource and merged, a lone attached file would score ≈1.0 and flatten a 3000-file repository to ≈0. A document's extracted text is its only evidence, so it travels on `FileFacts.excerpt` and reaches both `evidence` and `_affinity`.
-- **Not built** — diagrams, SSE, prompt caching, every benchmark, packaging. Briefs were a designed stage and the empty seam holding their place is now **deleted**; they return only if the quality benchmark earns them — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6.
-- **Never measured** — every tuning constant. `LAMBDA = 0.7`, the whole `WEIGHTS` table, `MAX_COMMITS`, `MIN_NAME_LENGTH`, and now `MAX_ROUNDS = 5` are guesses standing in until the quality benchmark exists.
+- **Not built** — diagrams, SSE, prompt caching, packaging. Briefs were a designed stage and the empty seam holding their place is now **deleted**; they return only if the quality benchmark earns them — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6.
+- **Benchmark harness built** — [benchmarks/](benchmarks/) measures all four targets with explicit scenario boundaries, raw samples, failure accounting, and JSON reports. The previous numbers are invalidated by the harness audit; establish the schema-v1 baseline before claiming a current product number.
+- **Never measured** — every remaining tuning constant. The `WEIGHTS` table, `MAX_COMMITS`, and `MIN_NAME_LENGTH` are guesses standing in even though the benchmark to tune them against now exists — nobody has yet. `LAMBDA` **was** a unit bug: `ordered()` applied it to `relevance()`'s raw 0–5.1 sum instead of a normalised 0–1 value, so diversity acted on under 6% of the intended scale regardless of `LAMBDA`'s value ([docs/ISSUES.md](docs/ISSUES.md) S1). The unit fix stays — it's genuinely correct. The *value* `0.7` didn't survive contact with a real distribution: measured against all 3 cases, it dropped average recall 30%→14% (2 of 3 cases regressed, 1 unaffected), because directory proximity is a weak diversity signal and real architectures often concentrate in one directory — pushing away from it is wrong exactly when true. Retuned to `LAMBDA = 0.95` (diversity nearly off), which reproduces the pre-fix per-case numbers exactly. This is a measured value, not a guess reinstated, and it's expected to fall again once a better diversity signal replaces directory proximity — tracked under `S-next` in [docs/ISSUES.md](docs/ISSUES.md).
 
 ## Stack
 
@@ -104,7 +105,7 @@ Vector DB, embeddings, chunking, RAG — Standup does one structured extraction 
 
 **This exclusion is under pressure and has not been re-decided.** The justification above assumed a fixed job against known input. A chat interface issuing arbitrary requests over arbitrary registered resources is closer to open-ended Q&A than that sentence allows. The exclusion may well still hold — narrowing by structure, time and dependency is not semantic search — but the original reason no longer covers the product. Open question 1.
 
-Also out: LangGraph/LangChain, Kubernetes, Postgres, Redis, Celery, Mermaid, Puppeteer/Playwright. **The agent loop ships, the framework does not** — it is ~40 lines over `structured()`, and per [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md) §0 you own the loop when its reliability and cost *are* the product. A framework here would hide the one number that matters.
+Also out: LangGraph/LangChain, Kubernetes, Postgres, Redis, Celery, and Puppeteer/Playwright. **The agent loop ships, the framework does not** — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) keeps the loop owned because its reliability, context, and cost are the product.
 
 **Auth is in, multi-tenancy is out.** These were previously excluded together, and they are not the same thing. Signing in to the subscription needs accounts, tokens and refresh — that is real auth and it ships. Nothing else does: no per-user isolation, no roles, no sharing, no tenancy. Standup runs as one person on one machine, and the account exists to authorise a gateway, not to partition a server.
 
@@ -134,6 +135,7 @@ The rules below exist to defeat both. A change that fixes one by causing the oth
 - **Dependencies point at contracts, not at data.** A module declares the shape it needs; whatever supplies it conforms. If a component imports its prop type from the mock-data file, deleting the mock breaks the component — the arrow is backwards.
 - **One file, one thing — the GUI too.** A component file holding four other components is a directory nobody made yet. Composition lives in the page; rendering lives in a component; behaviour with its own rules — a throttle, a key handler, a clamp — lives in a hook. A 200-line page passes the 300-line check and is still wrong.
 - **Depth is a smell.** A file past ~300 lines, a function past ~50, a call chain past three hops. None are illegal; all mean stop and look. Usually two concepts are sharing a home.
+- **A new module, moved boundary, or new call path updates the two diagrams in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) in the same change.** A stale architecture diagram is worse than no diagram.
 
 ### Comments and docstrings — minimal
 
@@ -145,6 +147,28 @@ Clear code needs less prose than you think, and stale prose is worse than none.
 - Design rationale belongs in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), not in a header comment that will drift from it.
 
 If a comment is needed to explain what the code does, rename things until it isn't.
+
+### Bug fixes
+
+Every bug this session was found by hand — a pasted transcript, a manual click-through — and the
+fix count (40+ file changes) grew faster than the bug count shrank. That gap has one cause: each fix
+matched the one call site a transcript happened to name, not the function every sibling path also
+routes through.
+
+- **Grep every caller before touching the function.** A bug fixed at one of five call sites is a bug
+  fixed 20% of the time. Find the point all callers converge on and land the fix there — not the path
+  that happened to get reported.
+- **The manual repro that found it becomes the check that stays.** A bug found by pasting a
+  transcript and fixed without turning that transcript into a kept test has no way to announce it
+  came back. This is "every non-trivial change leaves a check behind," applied specifically to
+  defects, not only to new logic.
+- **The same defect shape appearing twice means the abstraction is wrong, not that a third patch is
+  due.** Stop, name the shared cause, and fix the seam — not the next call site.
+- **Not built: a scenario suite.** Realistic multi-turn conversations run end-to-end before an
+  agent/pipeline change ships — the same discipline `benchmarks/quality` already applies to
+  selection, but gating on "does it break" instead of "is it good." Until it exists, every fix is
+  verified against only the one conversation that broke it, which is the mechanism behind the
+  circularity above.
 
 ### Completeness
 
@@ -185,15 +209,29 @@ Break these and it's a different product.
 
 ## Benchmarks
 
-[benchmarks/](benchmarks/) is the home for measurement — one concern per target. **Nothing in it is built**, deliberately: the call was to get the backend working first and measure once it is.
+[benchmarks/](benchmarks/) is the home for measurement — all four targets have explicit metric boundaries. Run
+`python -m benchmarks.quality` and `python -m benchmarks.benchmark`; the measurement contract and controls
+and comparability rules live in [benchmarks/README.md](benchmarks/README.md); this section states
+only what those numbers mean for the project.
 
-**Build the quality benchmark before refining anything.** Tuning without it is guessing, and every constant in `selection/` is currently a guess.
+**Quality** reports macro/micro path recall, candidate precision, and rank-sensitive nDCG. The
+`onboarding` suite uses published architecture essays on exact repository tags. Its 60% target,
+below which selection logic needs work rather than polish, remains in force. The three AOSA cases
+remain externally grounded. A synthetic `recurring-regression` case checks recent-work mechanics;
+it does not replace human recurring-deck labels.
 
-The design on hand: codebases with an existing human-made architecture talk; compare what Standup chose against what the presenter actually covered. Initial target: 60% overlap, below which the selection logic is wrong and polish is irrelevant.
+**Cost and latency** isolate cold and warm new-deck scenarios, model calls, and failed attempts. See
+benchmarks/README.md for the full contract. **Memory** measures Python allocations and RSS across
 
-**That measures the onboarding case, not the recurring one.** Ground truth for "the right three things to say about my last two days" is unsolved — open question 2. Benchmark still comes first; what it measures needs settling before it is built.
+complete project lifecycles. Prior harness results are not comparable. Human ground truth for "the
+right three things to say about my last two days" remains unsolved — open question 6.
 
-Budgets for cost, latency, and memory get set from real measurement, not estimated now. Record them here once measured.
+**Tuning against the benchmark, not before it, has now actually happened once** (close-out plan, Phase 4, 2026-08-14) — every `selection/` change measured before/after against all 3 cases, one signal at a time, nothing forced through on a guess:
+
+- `LAMBDA`'s scale-unit fix (S1) was the counter-example that started this discipline: shipped as a correctness fix, only measured afterward, and it dropped the one quality case that existed then from 36% to 9%. Adding two more cases and re-measuring both ways confirmed the regression was real, not a fluke of n=1: 30%→14% average across all three. The scale fix stayed (genuinely correct); `LAMBDA` retuned 0.7→0.95, reproducing the pre-fix numbers exactly.
+- `S10` (rename parsing) and `S11` (case-consistent emphasis matching) are real correctness fixes, parameter-free, and measured **benchmark-neutral** — 30%→30% avg both times, not one case moved.
+- `S4` (log1p on churn) and `S5` (word-boundary affinity matching) are also parameter-free and measured as **real improvements**: 30%→34% average recall, nothing regressed. `S5` — the highest-weighted signal — did almost all of that work alone (twisted alone: 25%→38%).
+- `S6` (recency decay) was tried at two half-lives and **parked**: 30 days regressed the average (30%→28%); 180 days landed back at 30% but with a different, not better, per-case split. Picking a half-life from 3 cases would have repeated the exact S1 mistake, so it was reverted rather than forced through. Full accounting per signal in [docs/ISSUES.md](docs/ISSUES.md).
 
 ## Working agreements
 

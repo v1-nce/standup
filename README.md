@@ -24,20 +24,26 @@ INDEX   →   GATHER   →   SELECT   →   PRESENT
 | Step | What it does | Model? |
 |---|---|---|
 | **Index** | Parses your resources into facts: symbols, dependency graph, git history, what your own docs emphasise. Content-keyed, so unchanged sources cost nothing and it runs once per project, not per deck. | No — offline and free |
-| **Gather** | Turns your sentence into a time window, a filter and a slide budget, then applies it to the index. | No — the agent already read your sentence |
-| **Select** | Ranks and cuts. Five signals, weighted, plus MMR so you don't get three slides on one file. | No — plain code |
-| **Present** | Writes the slide text, checks every claim against the index, builds the `.pptx`. | No — the agent writes it |
+| **Gather** | The AI director interprets the request and asks deterministic tools for the relevant evidence; it can redirect the search when the first view is insufficient. | Direction: yes; retrieval: no |
+| **Select** | The director forms stories and makes the audience-specific editorial cut, optionally informed by tailored specialist memos. Code only exposes provenance and enforces constraints. | Yes — this is the core judgment |
+| **Present** | The director writes one grounded narrative and chooses editable semantic visuals; deterministic tools apply the plan, validate it, and compile `.pptx`. | Composition: yes; execution: no |
 
-**An agent runs the four steps by talking to you** — the way Claude Code edits a file. It names an
-operation, the operation runs in code, it sees what happened, then it answers. Nothing else calls
-a model, so the whole bill is the conversation: **one call to chat, two to change a deck, three to
-build one.**
+**An AI orchestrator runs the four steps by talking to you** — the way Claude Code edits a file. It
+remains the single owner of the request: it interprets intent, chooses tools, checks results, and
+answers. Deterministic tools retrieve/index evidence, apply edits, render, and validate; they do
+not replace semantic, editorial, narrative, or visual judgment. The director loop remains bounded
+(**one call to chat, up to two to change a deck, up to three to build one**). Difficult decks may
+reserve one additional parallel wave of normally 1–2 narrow specialist calls, all counted in the
+turn's token/time/cost ceiling; routine work pays none of that overhead. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §8.2.
 
 Three things make it different from asking a chatbot:
 
-- **The model is never asked what's important.** Ask a model "which of these 40 things matter?"
-  and it says "all of them" — that's the flat-output failure. It never sees the scores or the
-  signals. Your request steers *where to look*; code decides *what's good*.
+- **The AI directs; code supplies ingredients and executes.** Index, search, graph, git, document,
+  render, and validation tools expose provenance-bearing facts and reliable capabilities. The
+  director can ask a tailored evidence, counterevidence, audience, domain, or visual specialist to
+  investigate one uncertainty, but only the director forms the story and writes the deck. This
+  focuses model intelligence without paying for an uncontrolled committee.
 - **The judgment is yours to edit, by saying so.** You see what was chosen and why *before* the
   deck exists. "Drop the second one." "Reword slide three." Your correction is turned into one
   exact operation and then obeyed — slides you didn't mention keep their wording byte for byte,
@@ -46,8 +52,8 @@ Three things make it different from asking a chatbot:
   it. Indexing, artifacts, decks and history are all local files. The only thing that ever
   leaves is the content of a bounded model call, to a provider you chose.
 
-**Status.** Chat, deck and GUI work end to end and produce a real `.pptx` — 167 backend tests, 27
-in the GUI. Diagrams, packaging and benchmarks are not built.
+**Status.** Chat, deck and GUI work end to end and produce a real `.pptx` — 320 backend tests, 40
+in the GUI. The benchmark harness is built; diagrams and packaging are not.
 
 ## 3. Folder Structure
 
@@ -55,7 +61,6 @@ in the GUI. Diagrams, packaging and benchmarks are not built.
 standup/
 ├── pyproject.toml              the package; declares the `standup` command
 ├── README.md                   this file
-├── API.md                      every endpoint, input and output
 ├── .env.example                copy to .env, add one model key
 │
 ├── src/standup/                THE PACKAGE — the only thing that ships
@@ -64,7 +69,7 @@ standup/
 │   ├── errors.py               the one exception hierarchy
 │   │
 │   ├── core/                   the analysis library — knows nothing about the web
-│   │   ├── agent/              the turn: the loop, and the three commands it may name
+│   │   ├── agent/              the turn: bounded loop and deterministic deck operations
 │   │   ├── index/              code.py · graph.py · history.py · docs.py
 │   │   ├── gather.py           scope validation, then candidates. Deterministic
 │   │   ├── selection/          signals.py · score.py · diversity.py
@@ -158,18 +163,24 @@ Standup replies with what it chose and why, and the slides appear on the right.
 whatever touched the API."* Your correction is applied literally — slides you didn't mention keep
 their wording exactly, and nothing you removed comes quietly back.
 
+**Change content or design by saying so.** Standup can patch one slide, delete or reorder slides,
+add grounded images and speaker notes, and compose freely with positioned text, vector shapes,
+lines, typography, color, rotation and layering on a normalized canvas. It can also restyle the deck
+with technical, light, dark, editorial or bold art direction. These are real agent operations, not
+prompt-only wishes; every untouched slide field and visual layer stays exact.
+
 **Get the file** at `127.0.0.1:8000/projects/PROJECT_ID/deck/file`. Open `deck.pptx` in
-PowerPoint or Keynote and edit it like any other deck.
+PowerPoint or Keynote and edit its native text boxes, shapes and images like any other deck.
 
 ### Working on Standup itself
 
 ```powershell
-python -m pytest          # 167 tests
+python -m pytest          # 320 tests
 ruff check .
 
 cd ui
 npm run dev               # http://localhost:3000, hot reload; expects the API on :8000
-npm test                  # 27 tests
+npm test                  # 40 tests
 ```
 
 In development the GUI runs on `:3000` and the API on `:8000` — two ports. A real install serves
@@ -185,4 +196,4 @@ both from one.
 | `502` from any deck request | The key reached the provider and was rejected |
 | `curl` asks about "Script Execution Risk" | You typed `curl` instead of `curl.exe` |
 
-Full endpoint reference: [API.md](API.md). Design and rationale: [docs/](docs/).
+Full endpoint reference: [docs/API.md](docs/API.md). Design and rationale: [docs/](docs/).

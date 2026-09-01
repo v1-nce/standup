@@ -8,6 +8,8 @@ from standup.core.models.api import (
 from standup.core.models.artifacts import (
     Candidate,
     Commit,
+    DeckDesign,
+    DeckTheme,
     Facts,
     FileFacts,
     Index,
@@ -15,8 +17,10 @@ from standup.core.models.artifacts import (
     Scored,
     Selection,
     Slide,
+    SlideLayout,
     SlidePlan,
     Symbol,
+    VisualElement,
 )
 from standup.core.models.project import (
     ChatMessage,
@@ -37,6 +41,8 @@ __all__ = [
     "Commit",
     "ContextAdd",
     "Deck",
+    "DeckDesign",
+    "DeckTheme",
     "Facts",
     "FileFacts",
     "Health",
@@ -54,6 +60,8 @@ __all__ = [
     "Selection",
     "SelectionEdit",
     "Slide",
+    "SlideLayout",
     "SlidePlan",
     "Symbol",
+    "VisualElement",
 ]

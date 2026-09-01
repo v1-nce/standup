@@ -47,7 +47,11 @@ class ChatSend(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    role: Literal["user", "assistant"]
+    """A `command` entry is what a round actually did - the same outcome line `results` carries
+    within a turn, persisted so the next turn has it too. Never written by a client; `ChatSend`
+    covers what a person may put in the log."""
+
+    role: Literal["user", "assistant", "command"]
     content: str
     at: datetime
 
