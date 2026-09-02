@@ -15,11 +15,18 @@ def _reason(item_signals: dict[str, float], score: float, cutoff: float | None) 
     return f"scored {score:.2f}, mostly from {dominant}{below}"
 
 
-def choose(index: Index, scope: Scope, candidates: list[Candidate], *, request: str) -> Selection:
+def choose(
+    index: Index,
+    scope: Scope,
+    candidates: list[Candidate],
+    *,
+    request: str,
+    limit: int | None = None,
+) -> Selection:
     signals = measure(candidates, index, scope)
     scores = {candidate.id: relevance(signals[candidate.id]) for candidate in candidates}
 
-    chosen = ordered(candidates, scores, scope.slide_budget)
+    chosen = ordered(candidates, scores, scope.slide_budget if limit is None else limit)
     taken = {candidate.id for candidate in chosen}
     cutoff = min((scores[c.id] for c in chosen), default=None)
 

@@ -53,6 +53,9 @@ def _emphasis(candidates: list[Candidate], index: Index, scope: Scope) -> dict[s
     return {c.id: index.emphasis[c.id] for c in candidates if c.id in index.emphasis}
 
 
+PATH_MATCH_WEIGHT = 5.0
+
+
 def _affinity(candidates: list[Candidate], index: Index, scope: Scope) -> dict[str, float]:
     terms = [term.lower() for term in [*scope.keywords, *scope.paths] if term]
     if not terms:
@@ -65,14 +68,18 @@ def _affinity(candidates: list[Candidate], index: Index, scope: Scope) -> dict[s
     excerpts = {facts.path: facts.excerpt for facts in index.files if facts.excerpt}
     hits = {}
     for candidate in candidates:
-        haystack = " ".join(
+        path_hits = sum(len(pattern.findall(candidate.id.lower())) for pattern in patterns)
+        content = " ".join(
             [
-                candidate.id,
                 *(excerpts.get(path, "") for path in candidate.paths),
                 *(c.message for c in _commits(candidate, by_sha)),
             ]
         ).lower()
-        found = float(sum(len(pattern.findall(haystack)) for pattern in patterns))
+        content_hits = sum(len(pattern.findall(content)) for pattern in patterns)
+        # A path match means the file is named after the concept - far stronger than a mere
+        # mention in a commit message. log1p on both sides keeps one keyword-rich changelog from
+        # flattening every real file to zero (the same compression `_churn` already uses).
+        found = math.log1p(path_hits) * PATH_MATCH_WEIGHT + math.log1p(content_hits)
         if found:
             hits[candidate.id] = found
     return hits

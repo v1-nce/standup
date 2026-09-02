@@ -117,7 +117,7 @@ def test_affinity_still_matches_the_keyword_as_its_own_word():
         files=[FileFacts(path="notes/one.md", content_hash="h", excerpt="Reworked auth end to end.")],
     )
     hits = SIGNALS["affinity"]([candidate], related, Scope(keywords=["auth"], slide_budget=1))
-    assert hits.get("notes", 0.0) == 1.0
+    assert hits.get("notes", 0.0) > 0
 
 
 def test_affinity_credits_whichever_of_a_candidate_s_paths_carries_the_excerpt():

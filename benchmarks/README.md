@@ -43,7 +43,7 @@ reported separately, so reliability failures cannot make either efficiency numbe
 
 `TrackedClient` records each logical model call's type, latency, token delta, success, error, and
 non-sensitive response shape (command actions and whether a reply was present).
-This makes the documented one/two/three-call agent budget observable instead of inferring it from a
+This makes the documented one/two/four-call agent budget observable instead of inferring it from a
 turn total. Provider SDK retries remain inside a logical call; wire-attempt counts are not currently
 exposed by the model seam.
 

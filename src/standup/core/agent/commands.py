@@ -17,6 +17,10 @@ from standup.core.models import (
 from standup.core.projects import ProjectStore
 from standup.errors import InvalidInput, NotFound
 
+# `select` returns a shortlist this many times the requested budget; the model cuts it down to
+# the budget with `keep`.
+SELECT_OVERSCAN = 3
+
 
 class Select(BaseModel):
     """Re-derive what the deck is about. Slides written against the old scope are discarded."""
@@ -105,7 +109,14 @@ def apply(store: ProjectStore, project_id: str, index: Index | None, command: Co
     try:
         match command:
             case Select():
-                deck = pipeline.select(store, project_id, index, command.request, command.scope)
+                deck = pipeline.select(
+                    store,
+                    project_id,
+                    index,
+                    command.request,
+                    command.scope,
+                    overscan=SELECT_OVERSCAN,
+                )
                 return f"{echo(command)} -> {_standing(deck)}; {len(deck.selection.cut)} cut"
             case Keep():
                 return f"{echo(command)} -> {_standing(pipeline.edit(store, project_id, command.ids))}"

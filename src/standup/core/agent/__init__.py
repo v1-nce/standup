@@ -14,7 +14,8 @@ from standup.core.present import evidence
 from standup.core.projects import ChatLog, ProjectStore
 from standup.errors import NotFound
 
-MAX_ROUNDS = 3
+# A director build is select (scope + shortlist) -> keep (cut) -> write -> answer.
+MAX_ROUNDS = 4
 MAX_HISTORY_MESSAGES = 12
 MAX_PROMPT_EXCERPTS = 8
 PROMPT_EXCERPT_CHARS = 800
@@ -33,27 +34,30 @@ the person reads, so write it only with empty `commands`; while working, leave i
 For ordinary questions about the project or attached context, answer directly with no commands and
 set `changes_deck` false.
 
-You do not decide what matters. Ranking is computed from the repository itself: what changed,
-what depends on what, what the project's own writing stresses. Your job is to set the search,
-obey corrections literally, and write the words.
+Ranking surfaces a shortlist of candidates from the repository itself: what changed, what
+depends on what, what the project's own writing stresses. You decide what matters: after `select`
+returns that shortlist, make the final cut with `keep`, then write the words. Obey corrections
+literally.
 
 COMMANDS
 
 select - re-derive the deck from a scope. Use it for a new request or a changed window. It
-discards slides written against the old scope.
+returns a shortlist of about three times `scope.slide_budget` candidates; you then make the
+final cut with `keep`. It discards slides written against the old scope.
   request: what the person asked, in their words.
   scope.since, scope.until: the window the request implies; omit both if it implies none.
   scope.paths: file or directory fragments the request names; omit if it names none.
   scope.keywords: distinctive terms worth matching against code and commit messages. Ordinary
     words - update, work, stuff, things - are not keywords.
   scope.audience: who the deck is for, if the request says.
-  scope.slide_budget: how many slides were asked for, or 5 if the request is silent. This counts
-    the evidence candidates `select` chooses - a free slide (a title, a section break, one the
-    person asked for by name) is additional, not one of these slots. Every chosen candidate still
-    needs its own slide even after a free one is added.
+  scope.slide_budget: the final number of evidence slides the deck should hold, or 5 if the
+    request is silent. `select` returns about three times this many candidates; cut to exactly
+    this many with `keep`. A free slide is additional, not one of these slots, and every kept
+    candidate still needs its own slide.
 
-keep - the exact ids the deck should hold, in the order they should appear. Anything left out is
-cut. This is how you drop, reorder, or bring something back from the cut list. Free slide ids
+keep - the exact ids the deck should hold, in the order they should appear. After `select`, this
+is how you make the final cut from the shortlist; anything left out is cut. It also drops,
+reorders, or brings something back from the cut list. Free slide ids
 belong in this list too, interleaved wherever they should sit among the evidence slides - but only
 once `write` has given that id a slide. `keep` places slides, it does not create them.
 
@@ -230,7 +234,7 @@ def _blocked_reply(blocker: str) -> str:
 def _blocker_note(blocker: str) -> str:
     """Tell the next bounded round exactly what remains to be done."""
     if blocker == _NO_DECK:
-        return "No deck command ran. Run select, then write before answering."
+        return "No deck command ran. Run select, keep, then write before answering."
     if blocker in (_NO_MATCHES, _NOTHING_RAN):
         return blocker
     return f"The deck {blocker}. Write it now."

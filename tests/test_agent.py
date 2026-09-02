@@ -67,16 +67,17 @@ def paint(slide: Slide) -> Slide:
     )
 
 
-def test_select_derives_a_deck_and_says_what_still_needs_writing(store, project, index):
+def test_select_derives_a_shortlist_and_says_what_still_needs_writing(store, project, index):
     result = apply(
         store,
         project.id,
         index,
         Select(action="select", request="standup", scope=Scope(slide_budget=2)),
     )
-    assert "2 chosen" in result
+    # budget 2 x overscan 3 = 6, but the fixture has only 3 files, so the whole set is the shortlist.
+    assert "3 chosen" in result
     assert "still to write" in result
-    assert len(pipeline.read(store, project.id).selection.chosen) == 2
+    assert len(pipeline.read(store, project.id).selection.chosen) == 3
 
 
 def test_keep_is_applied_literally(store, project, index):
@@ -308,7 +309,7 @@ async def test_the_system_distinguishes_chat_from_deck_changes(store, project):
     assert "folder: repo" in client.prompts[0]
 
 
-async def test_a_successful_build_uses_three_calls(store, project, index):
+async def test_a_successful_build_uses_four_calls(store, project, index):
     scope = Scope(slide_budget=1)
     chosen = pipeline.select(store, project.id, index, "peek", scope).selection.chosen[0]
     (store.paths(project.id).deck / pipeline.SELECTION_FILE).unlink()
@@ -318,6 +319,11 @@ async def test_a_successful_build_uses_three_calls(store, project, index):
             reply="Looking.",
             changes_deck=True,
             commands=[Select(action="select", request="standup", scope=scope)],
+        ),
+        Turn(
+            reply="Cutting.",
+            changes_deck=True,
+            commands=[Keep(action="keep", ids=[chosen.candidate.id])],
         ),
         Turn(
             reply="Writing.",
@@ -333,7 +339,7 @@ async def test_a_successful_build_uses_three_calls(store, project, index):
     )
 
     assert await talk(client, store, project.id, "standup tomorrow") == "One slide on the router."
-    assert len(client.prompts) == 3
+    assert len(client.prompts) == 4
     assert pipeline.read(store, project.id).slides[0].title == "Router"
     # No .pptx is written during a turn: the file is produced when it is downloaded.
     assert not (store.paths(project.id).deck / pipeline.DECK_FILE).exists()
@@ -350,6 +356,7 @@ async def test_an_incomplete_deck_can_use_the_final_budgeted_call_to_write(store
             changes_deck=True,
             commands=[Select(action="select", request="standup", scope=scope)],
         ),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=[chosen.candidate.id])]),
         Turn(reply="", changes_deck=True),
         Turn(
             reply="",
@@ -364,9 +371,9 @@ async def test_an_incomplete_deck_can_use_the_final_budgeted_call_to_write(store
     )
 
     assert await talk(client, store, project.id, "standup tomorrow") == "Done - the deck is ready."
-    assert len(client.prompts) == 3
+    assert len(client.prompts) == 4
     assert pipeline.read(store, project.id).slides[0].title == "Router"
-    assert "Exactly one command can still run" in client.prompts[2]
+    assert "Exactly one command can still run" in client.prompts[3]
 
 
 async def test_a_declared_deck_change_without_a_command_stops_honestly(store, project):
@@ -401,7 +408,7 @@ async def test_multiple_commands_are_rejected_before_any_mutation(store, project
         pipeline.read(store, project.id)
 
 
-async def test_a_natural_deck_request_uses_the_three_call_build_contract(store, project, index):
+async def test_a_natural_deck_request_uses_the_four_call_build_contract(store, project, index):
     scope = Scope(slide_budget=1)
     chosen = pipeline.select(store, project.id, index, "peek", scope).selection.chosen[0]
     (store.paths(project.id).deck / pipeline.SELECTION_FILE).unlink()
@@ -412,6 +419,7 @@ async def test_a_natural_deck_request_uses_the_three_call_build_contract(store, 
             changes_deck=True,
             commands=[Select(action="select", request="architecture slide", scope=scope)],
         ),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=[chosen.candidate.id])]),
         Turn(
             reply="",
             changes_deck=True,
@@ -426,7 +434,7 @@ async def test_a_natural_deck_request_uses_the_three_call_build_contract(store, 
     )
 
     assert await talk(client, store, project.id, "give me the architecture slide") == "Created one slide."
-    assert len(client.prompts) == 3
+    assert len(client.prompts) == 4
 
 
 async def test_a_project_with_nothing_attached_stops_honestly_after_a_failed_change(store):
@@ -547,6 +555,7 @@ async def test_a_needless_reselect_does_not_lose_a_slide_already_written(store, 
             reply="",
             commands=[Select(action="select", request="where is spike", scope=Scope(slide_budget=1))],
         ),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=[chosen.candidate.id])]),
         Turn(reply="Still just the router."),
     )
 
@@ -678,17 +687,18 @@ async def test_a_final_budget_command_runs_when_the_deck_is_still_incomplete(
         Turn(
             reply="",
             changes_deck=True,
-            commands=[Select(action="select", request="s", scope=scope)],
+            commands=[Keep(action="keep", ids=candidates[:2])],
         ),
+        Turn(reply="I ran out of time.", changes_deck=True),
         Turn(
-            reply="I ran out of time.",
+            reply="",
             changes_deck=True,
             commands=[
                 Write(
                     action="write",
                     slides=[
                         paint(Slide(candidate_id=candidate, title="Trailing", bullets=["one"]))
-                        for candidate in candidates
+                        for candidate in candidates[:2]
                     ],
                 )
             ],
@@ -697,7 +707,7 @@ async def test_a_final_budget_command_runs_when_the_deck_is_still_incomplete(
 
     result = await talk(client, store, project.id, "build it")
 
-    assert len(client.prompts) == agent.MAX_ROUNDS == 3
+    assert len(client.prompts) == agent.MAX_ROUNDS == 4
     assert "FINAL OPERATIONAL ROUND" in client.prompts[-1]
     assert result == "Done - the deck is ready."
     assert len(pipeline.read(store, project.id).slides) == 2

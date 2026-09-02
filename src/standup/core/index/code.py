@@ -33,6 +33,7 @@ MAX_FILE_BYTES = 1_000_000
 _QUOTED = re.compile(r"""["'`]([^"'`\n]+)["'`]""")
 _AFTER_KEYWORD = re.compile(r"\b(?:from|use|import|require|include)\b\s+([\w.:/\\@-]+)")
 _SPECIFIER_SUFFIXES = (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".mts", ".cts")
+_REQUIRE = re.compile(r"^\s*require\s+['\"]([^'\"]+)['\"]", re.MULTILINE)
 
 
 def walk(root: Path) -> Iterator[Path]:
@@ -106,6 +107,15 @@ def parse(root: Path) -> list[FileFacts]:
             module = module_path(statement.source)
             if module and module not in imports:
                 imports.append(module)
+        if not imports:
+            # tree-sitter's import query misses Ruby's `require 'x'`; scan for it so Ruby
+            # repos (puppet) still produce a dependency graph. `require_relative` and `load`
+            # are deliberately left out: the first needs importer-relative resolution, the
+            # second carries a filename extension `module_path` would mangle.
+            for match in _REQUIRE.finditer(source):
+                module = module_path(match.group(0))
+                if module and module not in imports:
+                    imports.append(module)
 
         facts.append(
             FileFacts(

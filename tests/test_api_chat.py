@@ -5,7 +5,7 @@ from standup.api import jobs, routes
 from standup.api import projects as projects_api
 from standup.api.app import app
 from standup.core.agent import Turn
-from standup.core.agent.commands import Select, Write
+from standup.core.agent.commands import Keep, Select, Write
 from standup.core.models import Scope, Slide, VisualElement
 from standup.core.projects import ChatLog
 from standup.errors import Upstream
@@ -23,12 +23,14 @@ class Conversation:
                     Select(action="select", request="standup", scope=Scope(slide_budget=1))
                 ],
             )
-        if "[no slide]" in prompt:
-            chosen = [
-                line.strip().removesuffix(" [no slide]")
-                for line in prompt.splitlines()
-                if line.endswith("[no slide]")
-            ]
+        no_slide = [
+            line.strip().removesuffix(" [no slide]")
+            for line in prompt.splitlines()
+            if line.endswith("[no slide]")
+        ]
+        if len(no_slide) > 1:
+            return Turn(reply="", commands=[Keep(action="keep", ids=[no_slide[0]])])
+        if no_slide:
             return Turn(
                 reply="",
                 commands=[
@@ -36,7 +38,7 @@ class Conversation:
                         action="write",
                         slides=[
                             Slide(
-                                candidate_id=item,
+                                candidate_id=no_slide[0],
                                 title="Router",
                                 bullets=["one"],
                                 elements=[
@@ -45,7 +47,6 @@ class Conversation:
                                     )
                                 ],
                             )
-                            for item in chosen
                         ],
                     )
                 ],

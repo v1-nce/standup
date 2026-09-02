@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     llm_model: str = "claude-opus-5"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-flash-lite-latest"
-    llm_max_tokens: int = 4096
+    # A thinking model spends its output budget before answering; 8192 leaves room for the full
+    # canvas `write` JSON plus the model's reasoning (see gemini_client._spoken).
+    llm_max_tokens: int = 8192
     llm_max_concurrency: int = 8
     llm_timeout_seconds: float = 120.0
     llm_base_url: str | None = None

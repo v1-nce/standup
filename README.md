@@ -32,7 +32,7 @@ INDEX   →   GATHER   →   SELECT   →   PRESENT
 remains the single owner of the request: it interprets intent, chooses tools, checks results, and
 answers. Deterministic tools retrieve/index evidence, apply edits, render, and validate; they do
 not replace semantic, editorial, narrative, or visual judgment. The director loop remains bounded
-(**one call to chat, up to two to change a deck, up to three to build one**). Difficult decks may
+(**one call to chat, up to two to change a deck, up to four to build one — select, then cut, then write, then answer**). Difficult decks may
 reserve one additional parallel wave of normally 1–2 narrow specialist calls, all counted in the
 turn's token/time/cost ceiling; routine work pays none of that overhead. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §8.2.

@@ -3,6 +3,7 @@
 import hashlib
 import re
 import zipfile
+from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -146,22 +147,33 @@ def prose(root: Path) -> str:
 
 def emphasis(text: str, files: list[FileFacts]) -> dict[str, float]:
     """Mentions of each symbol's own name, whatever punctuation it's built from — `valid?`,
-    `operator+`, `make-list`. A single tokenizer regex can't enumerate every language's identifier
-    punctuation, so each name is searched for directly instead, bounded on both sides by anything
-    that isn't a word character (`re`'s own pattern cache makes this free to repeat per name).
-    Case-insensitive throughout - prose capitalises a class differently mid-sentence than its own
-    file does, and a filename mention already matched either case; a symbol mention should too."""
+    `operator+`, `make-list`. Case-insensitive throughout, and each name is bounded on both sides
+    by non-word characters.
+
+    One scan of the prose, not one per symbol: nearly every symbol name is a plain `\\w+`
+    identifier, and for those a word-run tally is exact — `(?<!\\w)name(?!\\w)` matches precisely
+    the maximal runs of word characters equal to the name. Only a name carrying punctuation needs
+    the literal per-name scan; those are few, so each is counted once and memoised."""
     if not text:
         return {}
     lowered = text.lower()
+    words = Counter(word.lower() for word in re.findall(r"\w+", text))
+    punctuation: dict[str, int] = {}
+
+    def count(name: str) -> int:
+        if re.fullmatch(r"\w+", name):
+            return words[name.lower()]
+        found = punctuation.get(name)
+        if found is None:
+            found = len(re.findall(rf"(?<!\w){re.escape(name)}(?!\w)", text, re.IGNORECASE))
+            punctuation[name] = found
+        return found
 
     rates = {}
     for facts in files:
         filename = Path(facts.path).name
         names = [s.name for s in facts.symbols if len(s.name) >= MIN_NAME_LENGTH]
-        mentions = sum(
-            len(re.findall(rf"(?<!\w){re.escape(name)}(?!\w)", text, re.IGNORECASE)) for name in names
-        )
+        mentions = sum(count(name) for name in names)
         if len(filename) >= MIN_NAME_LENGTH:
             names.append(filename)
             mentions += lowered.count(filename.lower())

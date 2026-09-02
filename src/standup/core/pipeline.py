@@ -170,7 +170,15 @@ def _surviving(store: ProjectStore, project_id: str, chosen: Selection) -> list[
     return [slide for slide in written.slides if slide.free or slide.candidate_id in still_chosen]
 
 
-def select(store: ProjectStore, project_id: str, index: Index, request: str, scope: Scope) -> Deck:
+def select(
+    store: ProjectStore,
+    project_id: str,
+    index: Index,
+    request: str,
+    scope: Scope,
+    *,
+    overscan: int = 1,
+) -> Deck:
     """A new scope re-derives what the deck is about, keeping the slides it did not invalidate.
 
     This used to delete every slide outright. That made an ordinary "add a slide about X" — which the
@@ -179,7 +187,11 @@ def select(store: ProjectStore, project_id: str, index: Index, request: str, sco
     """
     settled = validated(scope, index)
     chosen = selection_module.choose(
-        index, settled, candidates(index, settled), request=request
+        index,
+        settled,
+        candidates(index, settled),
+        request=request,
+        limit=settled.slide_budget * overscan,
     )
     with _LOCKS[project_id]:
         previous = _plan(store, project_id)
