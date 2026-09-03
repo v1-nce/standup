@@ -2,7 +2,15 @@ from datetime import UTC, datetime
 
 import pytest
 
-from standup.core.models import Candidate, Commit, FileFacts, Index, Memory, MemoryEntry, Scope
+from standup.core.models import (
+    Candidate,
+    Commit,
+    FileFacts,
+    Index,
+    Memory,
+    MemoryEntry,
+    Scope,
+)
 from standup.core.selection import choose
 from standup.core.selection.diversity import _overlap, ordered
 from standup.core.selection.score import WEIGHTS, relevance
