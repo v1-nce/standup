@@ -107,6 +107,35 @@ def test_an_edit_is_obeyed_literally(store, project, index):
     assert backwards[1] in {e.candidate.id for e in trimmed.selection.cut}
 
 
+def test_a_keep_records_what_was_kept_and_dropped(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    kept = deck.selection.chosen[0].candidate.id
+    dropped = deck.selection.chosen[1].candidate.id
+
+    pipeline.edit(store, project.id, [kept])
+
+    trace = pipeline.memory(store, project.id)
+    assert len(trace.entries) == 1
+    assert trace.entries[0].request == "standup"
+    assert trace.entries[0].kept == [kept]
+    assert trace.entries[0].cut == [dropped]
+
+
+def test_a_pure_reorder_grows_the_trace_by_nothing(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    order = [entry.candidate.id for entry in deck.selection.chosen]
+
+    pipeline.edit(store, project.id, order)
+    pipeline.edit(store, project.id, order)
+
+    assert len(pipeline.memory(store, project.id).entries) == 1
+
+
+def test_the_trace_is_empty_until_the_first_keep(store, project, index):
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    assert pipeline.memory(store, project.id).entries == []
+
+
 def test_an_edit_blocks_while_the_projects_lock_is_held(store, project, index):
     """select/edit/write/forget share one per-project lock — a worker thread and the event loop
     both reach them, and only a real lock (not a point-in-time busy check) is safe across that."""

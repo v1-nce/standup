@@ -172,3 +172,21 @@ class Slide(BaseModel):
 class SlidePlan(BaseModel):
     design: DeckDesign = DeckDesign()
     slides: list[Slide] = []
+
+
+class MemoryEntry(BaseModel):
+    """One editorial decision — what a `keep` held and what it dropped — recorded so the next
+    deck can reuse the project's own history. Kept and cut hold candidate ids only, never free-slide
+    ids, which are presentation order rather than evidence preference."""
+
+    at: datetime
+    request: str
+    kept: list[str] = []
+    cut: list[str] = []
+
+
+class Memory(BaseModel):
+    """A project's preference trace, stored as an inspectable, editable artifact. Evolution here is
+    a visible record, not a hidden model change: delete or edit `entries` to revert it."""
+
+    entries: list[MemoryEntry] = []

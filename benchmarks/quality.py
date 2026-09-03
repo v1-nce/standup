@@ -22,9 +22,16 @@ from pathlib import Path
 from typing import Any
 
 from benchmarks.metrics import quality_metrics
+from pydantic import BaseModel
+from standup.core import index as index_module
+from standup.core import llm
 from standup.core import pipeline
+from standup.core.gather import candidates, validated
 from standup.core.models import Scope
 from standup.core.projects import ProjectStore
+from standup.core.selection.diversity import ordered
+from standup.core.selection.score import relevance
+from standup.core.selection.signals import measure
 
 CASES_DIR = Path(__file__).parent / "quality_cases"
 CACHE_DIR = Path(__file__).parent / ".quality-cache"
@@ -224,9 +231,139 @@ def _print(report: dict[str, Any]) -> None:
         )
 
 
+# --- director cut: a deterministic 3x shortlist, then one model call picks the budget ---
+
+DIRECTOR_OVERSCAN = 3
+DIRECTOR_CONTENT_CHARS = 1500
+DIRECTOR_MAX_SYMBOLS = 5
+DIRECTOR_MAX_COMMITS = 3
+_DIRECTOR_SYSTEM = "You select the files worth presenting."
+
+
+class DirectorCut(BaseModel):
+    chosen: list[str]
+
+
+def _unprefixed(candidate: Any) -> str:
+    return candidate.paths[0].split("/", 1)[1] if candidate.paths else candidate.id
+
+
+def _director_evidence(
+    candidate: Any,
+    files_by_path: dict[str, Any],
+    commits_by_sha: dict[str, Any],
+    clone: Path,
+) -> str:
+    unprefixed = _unprefixed(candidate)
+    facts = files_by_path.get(unprefixed)
+    symbols = [s.name for s in (facts.symbols if facts else [])[:DIRECTOR_MAX_SYMBOLS]]
+    messages = [
+        commits_by_sha[sha].message for sha in candidate.commits if sha in commits_by_sha
+    ][:DIRECTOR_MAX_COMMITS]
+    content = ""
+    source = clone / unprefixed
+    if source.is_file():
+        try:
+            content = source.read_text(encoding="utf-8", errors="replace")[:DIRECTOR_CONTENT_CHARS]
+        except OSError:
+            content = ""
+    return (
+        f"id: {unprefixed}\n"
+        f"symbols: {', '.join(symbols)}\n"
+        f"commits: {'; '.join(messages)}\n"
+        f"content:\n{content}\n"
+    )
+
+
+async def _director_report(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    client = llm.from_settings()
+    rows: list[dict[str, Any]] = []
+    try:
+        for case in cases:
+            with _repo(case) as clone:
+                facts = index_module.build(clone)
+                merged = index_module.merged([("r", facts)])
+                scope = Scope(
+                    slide_budget=case["slide_budget"],
+                    keywords=case.get("keywords", []),
+                    paths=case.get("paths", []),
+                )
+                settled = validated(scope, merged)
+                cands = candidates(merged, settled)
+                signals = measure(cands, merged, settled)
+                scores = {c.id: relevance(signals[c.id]) for c in cands}
+                deterministic = ordered(cands, scores, case["slide_budget"])
+                shortlist = ordered(cands, scores, case["slide_budget"] * DIRECTOR_OVERSCAN)
+
+                files_by_path = {f.path: f for f in facts.files}
+                commits_by_sha = {c.sha: c for c in merged.commits}
+                evidence = [
+                    _director_evidence(c, files_by_path, commits_by_sha, clone) for c in shortlist
+                ]
+
+            prompt = (
+                f"Request: {case['request']}\n"
+                f"Pick exactly {case['slide_budget']} files from the candidates below that best "
+                "explain this architecture, in order of importance. Return their ids only.\n\n"
+                + "\n".join(evidence)
+            )
+            cut = await client.structured(prompt, DirectorCut, system=_DIRECTOR_SYSTEM)
+
+            short_unprefixed = {_unprefixed(c) for c in shortlist}
+            chosen: list[str] = []
+            for raw in cut.chosen:
+                unprefixed = raw.split("/", 1)[1] if raw.startswith("r/") else raw
+                if unprefixed in short_unprefixed and unprefixed not in chosen:
+                    chosen.append(unprefixed)
+            chosen = chosen[: case["slide_budget"]]
+
+            relevant = _relevance(case)
+            rows.append(
+                {
+                    "name": case["name"],
+                    "suite": case["suite"],
+                    "deterministic": quality_metrics(
+                        [[_unprefixed(c)] for c in deterministic], relevant
+                    ),
+                    "director": quality_metrics([[p] for p in chosen], relevant),
+                    "director_chosen": chosen,
+                }
+            )
+    finally:
+        await client.aclose()
+
+    macro = statistics.mean(float(row["director"]["recall"]) for row in rows)
+    det_macro = statistics.mean(float(row["deterministic"]["recall"]) for row in rows)
+    print(f"director cut ({DIRECTOR_OVERSCAN}x shortlist + one model call)")
+    print(f"{'case':12s} {'det rec':>8s} {'dir rec':>8s} {'det nDCG':>8s} {'dir nDCG':>8s}")
+    for row in rows:
+        det, director = row["deterministic"], row["director"]
+        print(
+            f"{row['name']:12s} {det['recall']:8.0%} {director['recall']:8.0%} "
+            f"{det['ndcg']:8.0%} {director['ndcg']:8.0%}"
+        )
+        print(f"    picked: {', '.join(row['director_chosen'])}")
+        print(f"    missed: {', '.join(director['missed'])}")
+    print(f"  macro director recall {macro:.0%}; deterministic {det_macro:.0%}; target {TARGET_RECALL:.0%}")
+    return {
+        "schema_version": 1,
+        "generated_at": datetime.now(UTC).isoformat(),
+        "mode": "director",
+        "overscan": DIRECTOR_OVERSCAN,
+        "cases": rows,
+        "macro_director_recall": macro,
+        "macro_deterministic_recall": det_macro,
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", action="append", help="run only this suite (repeatable)")
+    parser.add_argument(
+        "--director",
+        action="store_true",
+        help="measure the director cut: deterministic 3x shortlist + one model call",
+    )
     parser.add_argument("--json", type=Path, help="write the complete machine-readable report")
     parser.add_argument(
         "--enforce-target",
@@ -244,6 +381,19 @@ def main(argv: list[str] | None = None) -> int:
         cases = [case for case in cases if case["suite"] in wanted]
     if not cases:
         raise SystemExit("no matching quality cases")
+
+    if args.director:
+        onboarding = [
+            case for case in cases if case["suite"] == "onboarding" and not case.get("fixture")
+        ]
+        if not onboarding:
+            raise SystemExit("--director runs the onboarding (non-synthetic) suite")
+        report = asyncio.run(_director_report(onboarding))
+        if args.json:
+            args.json.parent.mkdir(parents=True, exist_ok=True)
+            args.json.write_text(json.dumps(report, indent=2), encoding="utf-8")
+            print(f"report: {args.json}")
+        return 0
 
     results = [run_case(case) for case in cases]
     suites = {

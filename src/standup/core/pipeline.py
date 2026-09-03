@@ -4,6 +4,7 @@ import asyncio
 import threading
 from collections import defaultdict
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 
 from standup.core import index as index_module
@@ -14,6 +15,8 @@ from standup.core.models import (
     Deck,
     DeckDesign,
     Index,
+    Memory,
+    MemoryEntry,
     ResourceKind,
     Scope,
     Selection,
@@ -29,6 +32,7 @@ from standup.errors import InvalidInput, NotFound
 SELECTION_FILE = "selection.json"
 PLAN_FILE = "plan.json"
 DECK_FILE = "deck.pptx"
+MEMORY_FILE = "memory.json"
 # ponytail: the head of a file, which carries its docstring, imports and first definitions. A change
 # made at the bottom of a long file is missed; the upgrade is the commit's diff, once history keeps
 # more than line counts.
@@ -129,6 +133,30 @@ def load(store: ProjectStore, project_id: str) -> Selection:
         return load_json(Selection, record.read_text(encoding="utf-8"), "This project's selection")
 
 
+def memory(store: ProjectStore, project_id: str) -> Memory:
+    """The project's preference trace, empty until the first `keep` runs."""
+    with _LOCKS[project_id]:
+        record = _room(store, project_id) / MEMORY_FILE
+        if not record.is_file():
+            return Memory()
+        return load_json(Memory, record.read_text(encoding="utf-8"), "This project's preference memory")
+
+
+def remember(
+    store: ProjectStore, project_id: str, request: str, kept: list[str], cut: list[str]
+) -> None:
+    """Record one editorial decision. A pure reorder or no-op `keep` produces the same kept/cut pair
+    as the entry before it and adds nothing - only actual preference changes grow the trace."""
+    if not kept and not cut:
+        return
+    with _LOCKS[project_id]:
+        previous = memory(store, project_id)
+        if previous.entries and previous.entries[-1].kept == kept and previous.entries[-1].cut == cut:
+            return
+        entry = MemoryEntry(at=datetime.now(UTC), request=request, kept=kept, cut=cut)
+        _put(store, project_id, MEMORY_FILE, Memory(entries=[*previous.entries, entry]))
+
+
 def _plan(store: ProjectStore, project_id: str) -> SlidePlan | None:
     record = _room(store, project_id) / PLAN_FILE
     if not record.is_file():
@@ -136,7 +164,7 @@ def _plan(store: ProjectStore, project_id: str) -> SlidePlan | None:
     return load_json(SlidePlan, record.read_text(encoding="utf-8"), "This project's slide plan")
 
 
-def _put(store: ProjectStore, project_id: str, name: str, document: Selection | SlidePlan) -> None:
+def _put(store: ProjectStore, project_id: str, name: str, document: Selection | SlidePlan | Memory) -> None:
     home = _room(store, project_id)
     home.mkdir(parents=True, exist_ok=True)
     atomic_write(home / name, document.model_dump_json(indent=2))
@@ -233,6 +261,11 @@ def edit(store: ProjectStore, project_id: str, keep: list[str]) -> Deck:
         _put(store, project_id, SELECTION_FILE, chosen)
         if followed is not None:
             _put(store, project_id, PLAN_FILE, followed)
+        kept_ids = [entry.candidate.id for entry in chosen.chosen]
+        cut_ids = [
+            entry.candidate.id for entry in current.chosen if entry.candidate.id not in set(keep)
+        ]
+        remember(store, project_id, current.request, kept_ids, cut_ids)
     return Deck(
         selection=chosen,
         design=followed.design if followed else DeckDesign(),

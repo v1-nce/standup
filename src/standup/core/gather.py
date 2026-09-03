@@ -7,6 +7,11 @@ from standup.core.index.code import SKIP_DIRS
 from standup.core.models import Candidate, Index, Scope
 from standup.errors import InvalidInput
 
+# Prose/documentation is indexed (docs.prose reads it for the emphasis signal, grounding still
+# knows it) but is never a slide candidate: a deck cites code, not a README or a generated HTML doc.
+# html/htm/xhtml catch generated docs (twisted doc/); md/rst/txt/adoc catch READMEs and docs.
+NON_CODE_SUFFIXES = {".md", ".rst", ".txt", ".adoc", ".html", ".htm", ".xhtml"}
+
 
 def _aware(moment: datetime) -> datetime:
     return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
@@ -65,6 +70,10 @@ def candidates(index: Index, scope: Scope) -> list[Candidate]:
     in_play = {path for path in indexed if not windowed or path in touched}
     # A file deleted in the window is still work done, and only git remembers it.
     in_play |= touched.keys() - indexed
-    in_play = {path for path in in_play if not _skipped(path)}
+    in_play = {
+        path
+        for path in in_play
+        if not _skipped(path) and PurePosixPath(path).suffix.lower() not in NON_CODE_SUFFIXES
+    }
 
     return [candidate(path) for path in sorted(in_play)]

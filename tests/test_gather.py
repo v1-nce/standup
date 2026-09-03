@@ -49,7 +49,8 @@ def test_a_window_keeps_only_what_changed_inside_it(index):
 
 def test_no_window_puts_the_whole_index_in_play(index):
     chosen = candidates(index, Scope(slide_budget=3))
-    assert [c.id for c in chosen] == ["README.md", "src/auth.py", "src/billing.py"]
+    # README.md is indexed (prose feeds the emphasis signal) but is not a slide candidate.
+    assert [c.id for c in chosen] == ["src/auth.py", "src/billing.py"]
 
 
 def test_candidates_carry_only_the_commits_inside_the_window(index):

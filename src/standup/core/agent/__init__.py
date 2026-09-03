@@ -9,17 +9,25 @@ from pydantic import BaseModel
 from standup.core import pipeline
 from standup.core.agent.commands import Command, apply, echo
 from standup.core.llm import ModelClient
-from standup.core.models import ChatMessage, Deck, Index, Scope, Slide
+from standup.core.models import ChatMessage, Deck, Index, Memory, Scope, Slide
 from standup.core.present import evidence
 from standup.core.projects import ChatLog, ProjectStore
 from standup.errors import NotFound
 
-# A director build is select (scope + shortlist) -> keep (cut) -> write -> answer.
-MAX_ROUNDS = 4
+# A director build is select (scope + shortlist) -> keep (cut) -> write -> answer, four calls on the
+# happy path. One round above that is the recovery budget: a rejected command (a batched keep+write,
+# a mistyped id) must not turn a build that was one correction away from writing into a failure.
+MAX_ROUNDS = 5
 MAX_HISTORY_MESSAGES = 12
 MAX_PROMPT_EXCERPTS = 8
 PROMPT_EXCERPT_CHARS = 800
 MAX_CONTEXT_RESOURCES = 20
+# The head of a selection's cut list the prompt shows. `keep` may bring back any candidate it can
+# still name, so only the near-misses belong in the prompt - dumping the whole pool (often hundreds
+# of ids, ranked and never read) is the largest single block in the prompt. `choose` orders `cut` by
+# score descending and `edited` puts the just-cut shortlist first, so the head is exactly those.
+MAX_CUT_CANDIDATES = 20
+MAX_PREFERENCES = 15
 _TERM = re.compile(r"[a-z0-9_.-]{3,}")
 _BORING_TERMS = {"about", "attached", "document", "file", "files", "tell", "what", "with"}
 
@@ -177,7 +185,11 @@ def _deck_state(deck: Deck | None) -> str:
             lines += ["free:"] + [f"  {slide.candidate_id}: {_slide_text(slide)}" for slide in frees]
 
     if deck.selection.cut:
-        lines += ["cut:"] + [f"  {entry.candidate.id}" for entry in deck.selection.cut]
+        visible = deck.selection.cut[:MAX_CUT_CANDIDATES]
+        lines += ["cut:"] + [f"  {entry.candidate.id}" for entry in visible]
+        hidden = len(deck.selection.cut) - len(visible)
+        if hidden:
+            lines.append(f"  … {hidden} more cut")
     return "\n".join(lines)
 
 
@@ -277,6 +289,33 @@ def _resources(store: ProjectStore, project_id: str) -> str:
     )
 
 
+def _preferences(memory: Memory) -> str:
+    """A bounded reminder of what earlier decks kept and cut, so the director can reuse the
+    project's own editorial history. Latest decision wins for a candidate: kept, then cut, then kept
+    again reads as kept - a running tally would double-count every reorder."""
+    if not memory.entries:
+        return ""
+    kept: list[str] = []
+    cut: list[str] = []
+    for entry in memory.entries:
+        for item in entry.kept:
+            if item in cut:
+                cut.remove(item)
+            if item not in kept:
+                kept.append(item)
+        for item in entry.cut:
+            if item in kept:
+                kept.remove(item)
+            if item not in cut:
+                cut.append(item)
+    lines = []
+    if kept:
+        lines.append("kept: " + ", ".join(kept[:MAX_PREFERENCES]))
+    if cut:
+        lines.append("cut: " + ", ".join(cut[:MAX_PREFERENCES]))
+    return "\n".join(lines)
+
+
 def _prompt(
     store: ProjectStore,
     project_id: str,
@@ -305,7 +344,14 @@ def _prompt(
     said = "\n".join(f"{message.role}: {message.content}" for message in recent)
     cited = ""
     if deck and index:
-        cited = evidence(deck.selection, index, _sources(store, project_id, deck))
+        # Full source is only worth its tokens once the model is writing the kept candidates. While
+        # the shortlist still holds overscan x budget items (select done, keep pending), ids, symbols
+        # and commit messages are enough to make the cut - so don't read or emit each file's source
+        # for candidates the model is about to throw away.
+        shortlisting = len(deck.selection.chosen) > deck.selection.scope.slide_budget
+        sources = None if shortlisting else _sources(store, project_id, deck)
+        cited = evidence(deck.selection, index, sources)
+    preferences = _preferences(pipeline.memory(store, project_id)) if deck else ""
     blocks = [
         # Stable across every round of this turn - changes only between turns, if at all.
         f"{facts}. Today is {today.date().isoformat()}.",
@@ -314,8 +360,10 @@ def _prompt(
         f"CONVERSATION\n{said}",
         # Volatile: a command applied last round changes both of these before the next one is asked.
         _deck_state(deck),
-        f"EVIDENCE\n{cited}",
     ]
+    if preferences:
+        blocks.append(f"PREFERENCES\n{preferences}")
+    blocks.append(f"EVIDENCE\n{cited}")
     if results:
         blocks.append("RESULTS THIS TURN\n" + "\n".join(results))
     if last:

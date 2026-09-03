@@ -74,10 +74,11 @@ def test_select_derives_a_shortlist_and_says_what_still_needs_writing(store, pro
         index,
         Select(action="select", request="standup", scope=Scope(slide_budget=2)),
     )
-    # budget 2 x overscan 3 = 6, but the fixture has only 3 files, so the whole set is the shortlist.
-    assert "3 chosen" in result
+    # budget 2 x overscan 3 = 6, but the fixture has only 2 code files - README.md is prose, so it
+    # never becomes a slide candidate - so the whole code set is the shortlist.
+    assert "2 chosen" in result
     assert "still to write" in result
-    assert len(pipeline.read(store, project.id).selection.chosen) == 3
+    assert len(pipeline.read(store, project.id).selection.chosen) == 2
 
 
 def test_keep_is_applied_literally(store, project, index):
@@ -88,6 +89,18 @@ def test_keep_is_applied_literally(store, project, index):
     assert [
         e.candidate.id for e in pipeline.read(store, project.id).selection.chosen
     ] == list(reversed(chosen))
+
+
+async def test_prior_keeps_surface_as_preferences_in_the_prompt(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=1))
+    kept = deck.selection.chosen[0].candidate.id
+    pipeline.edit(store, project.id, [kept])
+
+    client = StubClient(Turn(reply="Done.", changes_deck=False))
+    await talk(client, store, project.id, "make it again")
+
+    assert "PREFERENCES" in client.prompts[0]
+    assert f"kept: {kept}" in client.prompts[0]
 
 
 def test_update_changes_only_named_slide_fields(store, project, index):
@@ -357,7 +370,8 @@ async def test_an_incomplete_deck_can_use_the_final_budgeted_call_to_write(store
             commands=[Select(action="select", request="standup", scope=scope)],
         ),
         Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=[chosen.candidate.id])]),
-        Turn(reply="", changes_deck=True),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=["src/imaginary.py"])]),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=["src/imaginary.py"])]),
         Turn(
             reply="",
             changes_deck=True,
@@ -371,9 +385,9 @@ async def test_an_incomplete_deck_can_use_the_final_budgeted_call_to_write(store
     )
 
     assert await talk(client, store, project.id, "standup tomorrow") == "Done - the deck is ready."
-    assert len(client.prompts) == 4
+    assert len(client.prompts) == agent.MAX_ROUNDS
     assert pipeline.read(store, project.id).slides[0].title == "Router"
-    assert "Exactly one command can still run" in client.prompts[3]
+    assert "Exactly one command can still run" in client.prompts[-1]
 
 
 async def test_a_declared_deck_change_without_a_command_stops_honestly(store, project):
@@ -690,6 +704,7 @@ async def test_a_final_budget_command_runs_when_the_deck_is_still_incomplete(
             commands=[Keep(action="keep", ids=candidates[:2])],
         ),
         Turn(reply="I ran out of time.", changes_deck=True),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=["src/imaginary.py"])]),
         Turn(
             reply="",
             changes_deck=True,
@@ -707,7 +722,7 @@ async def test_a_final_budget_command_runs_when_the_deck_is_still_incomplete(
 
     result = await talk(client, store, project.id, "build it")
 
-    assert len(client.prompts) == agent.MAX_ROUNDS == 4
+    assert len(client.prompts) == agent.MAX_ROUNDS
     assert "FINAL OPERATIONAL ROUND" in client.prompts[-1]
     assert result == "Done - the deck is ready."
     assert len(pipeline.read(store, project.id).slides) == 2
