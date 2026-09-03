@@ -25,6 +25,9 @@ SKIP_DIRS = {
     "env",
     "tests",
     "test",
+    # Ruby/RSpec names its suite `spec/` rather than `test/`; it is the same thing and must not
+    # become a slide candidate (puppet's spec/unit/* files were crowding its shortlist).
+    "spec",
     "examples",
     "example",
 }

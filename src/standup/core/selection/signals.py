@@ -7,7 +7,7 @@ import math
 import re
 from collections.abc import Callable
 
-from standup.core.models import Candidate, Commit, Index, Scope
+from standup.core.models import Candidate, Commit, Index, Memory, Scope
 
 Signal = Callable[[list[Candidate], Index, Scope], dict[str, float]]
 
@@ -60,22 +60,24 @@ def _affinity(candidates: list[Candidate], index: Index, scope: Scope) -> dict[s
     terms = [term.lower() for term in [*scope.keywords, *scope.paths] if term]
     if not terms:
         return {}
-    # Bounded the same way `emphasis()` bounds a symbol name: "auth" used to match inside "author".
-    # Stemming/synonyms ("login" vs "session.py") is a separate, larger call - not this one.
-    patterns = [re.compile(rf"(?<!\w){re.escape(term)}(?!\w)") for term in terms]
+    # A filename is often a compound word (selectreactor.py), so a path match lets a term be a
+    # whole word OR the suffix of a longer name; the right boundary still stops "auth" matching
+    # "author". Content stays bounded on both sides, so a keyword never lights up an unrelated word.
+    path_patterns = [re.compile(rf"{re.escape(term)}(?!\w)") for term in terms]
+    content_patterns = [re.compile(rf"(?<!\w){re.escape(term)}(?!\w)") for term in terms]
 
     by_sha = {commit.sha: commit for commit in index.commits}
     excerpts = {facts.path: facts.excerpt for facts in index.files if facts.excerpt}
     hits = {}
     for candidate in candidates:
-        path_hits = sum(len(pattern.findall(candidate.id.lower())) for pattern in patterns)
+        path_hits = sum(len(pattern.findall(candidate.id.lower())) for pattern in path_patterns)
         content = " ".join(
             [
                 *(excerpts.get(path, "") for path in candidate.paths),
                 *(c.message for c in _commits(candidate, by_sha)),
             ]
         ).lower()
-        content_hits = sum(len(pattern.findall(content)) for pattern in patterns)
+        content_hits = sum(len(pattern.findall(content)) for pattern in content_patterns)
         # A path match means the file is named after the concept - far stronger than a mere
         # mention in a commit message. log1p on both sides keeps one keyword-rich changelog from
         # flattening every real file to zero (the same compression `_churn` already uses).
@@ -85,12 +87,33 @@ def _affinity(candidates: list[Candidate], index: Index, scope: Scope) -> dict[s
     return hits
 
 
+def _preference(candidates: list[Candidate], memory: Memory) -> dict[str, float]:
+    """The project's own editorial history as a signal. Latest decision wins per candidate: kept
+    most recently scores +1, cut most recently -1, unseen 0. `measure` min-max normalises these like
+    every other signal, so the relative order is kept > unseen > cut - history nudges ranking but
+    never overrides the current request."""
+    latest: dict[str, float] = {}
+    for entry in memory.entries:
+        for item in entry.kept:
+            latest[item] = 1.0
+        for item in entry.cut:
+            latest[item] = -1.0
+    return {candidate.id: latest.get(candidate.id, 0.0) for candidate in candidates}
+
+
+def _no_memory(candidates: list[Candidate], index: Index, scope: Scope) -> dict[str, float]:
+    """The SIGNALS slot for a project with no trace yet: nothing to say, so every candidate scores
+    the same 0.0 an absent signal would. `measure` swaps in `_preference` once a trace exists."""
+    return {}
+
+
 SIGNALS: dict[str, Signal] = {
     "churn": _churn,
     "recency": _recency,
     "centrality": _centrality,
     "emphasis": _emphasis,
     "affinity": _affinity,
+    "memory": _no_memory,
 }
 
 
@@ -105,10 +128,17 @@ def normalised(raw: dict[str, float]) -> dict[str, float]:
     return {path: (value - low) / (high - low) for path, value in raw.items()}
 
 
-def measure(candidates: list[Candidate], index: Index, scope: Scope) -> dict[str, dict[str, float]]:
+def measure(
+    candidates: list[Candidate], index: Index, scope: Scope, memory: Memory | None = None
+) -> dict[str, dict[str, float]]:
     """Every signal, normalised to 0-1 across the candidate set, keyed by candidate id."""
     scored = {candidate.id: dict.fromkeys(SIGNALS, 0.0) for candidate in candidates}
     for name, signal in SIGNALS.items():
         for path, value in normalised(signal(candidates, index, scope)).items():
             scored[path][name] = value
+    # The memory signal needs project state the others don't; computed here and normalised the same
+    # way, so it stays a visible, weighted signal rather than a hidden ranking tweak.
+    if memory is not None and memory.entries:
+        for path, value in normalised(_preference(candidates, memory)).items():
+            scored[path]["memory"] = value
     return scored

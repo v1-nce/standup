@@ -1,6 +1,6 @@
 """Candidates in, an editable Selection out. Pure code - no model reaches this decision."""
 
-from standup.core.models import Candidate, Index, Scope, Scored, Selection
+from standup.core.models import Candidate, Index, Memory, Scope, Scored, Selection
 from standup.core.selection.diversity import ordered
 from standup.core.selection.score import WEIGHTS, relevance
 from standup.core.selection.signals import measure
@@ -22,8 +22,9 @@ def choose(
     *,
     request: str,
     limit: int | None = None,
+    memory: Memory | None = None,
 ) -> Selection:
-    signals = measure(candidates, index, scope)
+    signals = measure(candidates, index, scope, memory)
     scores = {candidate.id: relevance(signals[candidate.id]) for candidate in candidates}
 
     chosen = ordered(candidates, scores, scope.slide_budget if limit is None else limit)

@@ -10,6 +10,9 @@ WEIGHTS = {
     # The request steers the search, so it outweighs any single derived signal - but not their sum,
     # or naming one thing would bury everything the user forgot to mention.
     "affinity": 1.5,
+    # Preference from earlier decks nudges, never overrides: below every derived signal and the
+    # request. A guess, like the rest of this table, until the quality benchmark measures it.
+    "memory": 0.5,
 }
 
 _unweighted = set(SIGNALS) - set(WEIGHTS)

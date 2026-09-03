@@ -220,6 +220,7 @@ def select(
         candidates(index, settled),
         request=request,
         limit=settled.slide_budget * overscan,
+        memory=memory(store, project_id),
     )
     with _LOCKS[project_id]:
         previous = _plan(store, project_id)

@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from standup.core.models import Candidate, Commit, FileFacts, Index, Scope
+from standup.core.models import Candidate, Commit, FileFacts, Index, Memory, MemoryEntry, Scope
 from standup.core.selection import choose
 from standup.core.selection.diversity import _overlap, ordered
 from standup.core.selection.score import WEIGHTS, relevance
@@ -107,6 +107,31 @@ def test_affinity_does_not_match_a_keyword_inside_an_unrelated_word():
     )
     hits = SIGNALS["affinity"]([candidate], unrelated, Scope(keywords=["auth"], slide_budget=1))
     assert hits.get("notes", 0.0) == 0.0
+
+
+def test_affinity_matches_a_keyword_as_a_compound_filename_suffix():
+    """selectreactor.py is about the reactor even though the term is glued to a prefix - a
+    filename is one compound word. The right boundary still blocks a prefix match (auth in author)."""
+    candidate = Candidate(id="twisted/internet/selectreactor.py", paths=["twisted/internet/selectreactor.py"])
+    related = Index(
+        fingerprint="f",
+        built_at=TODAY,
+        files=[FileFacts(path="twisted/internet/selectreactor.py", content_hash="h")],
+    )
+    hits = SIGNALS["affinity"]([candidate], related, Scope(keywords=["reactor"], slide_budget=1))
+    assert hits.get(candidate.id, 0.0) > 0
+
+
+def test_affinity_still_does_not_match_a_prefix_in_the_filename():
+    """auth must not match author.py - the right boundary is what prevents that, and it stays."""
+    candidate = Candidate(id="author.py", paths=["author.py"])
+    related = Index(
+        fingerprint="f",
+        built_at=TODAY,
+        files=[FileFacts(path="author.py", content_hash="h")],
+    )
+    hits = SIGNALS["affinity"]([candidate], related, Scope(keywords=["auth"], slide_budget=1))
+    assert hits.get(candidate.id, 0.0) == 0.0
 
 
 def test_affinity_still_matches_the_keyword_as_its_own_word():
@@ -250,3 +275,31 @@ def test_a_budget_larger_than_the_evidence_cuts_nothing(index, candidates):
     selection = choose(index, Scope(slide_budget=10), candidates, request="everything")
     assert len(selection.chosen) == 3
     assert selection.cut == []
+
+
+def test_memory_prefers_a_previously_kept_candidate_over_an_unseen_one(index, candidates):
+    memory = Memory(
+        entries=[MemoryEntry(at=TODAY, request="prior", kept=["app/src/auth/session.py"])]
+    )
+    scored = measure(candidates, index, Scope(slide_budget=2), memory)
+    assert scored["app/src/auth/session.py"]["memory"] > scored["app/src/auth/login.py"]["memory"]
+
+
+def test_memory_puts_a_previously_cut_candidate_below_an_unseen_one(index, candidates):
+    memory = Memory(
+        entries=[MemoryEntry(at=TODAY, request="prior", cut=["app/src/auth/login.py"])]
+    )
+    scored = measure(candidates, index, Scope(slide_budget=2), memory)
+    assert scored["app/src/auth/login.py"]["memory"] < scored["app/src/auth/session.py"]["memory"]
+
+
+def test_memory_uses_the_latest_disposition_not_a_running_tally(index, candidates):
+    memory = Memory(
+        entries=[
+            MemoryEntry(at=TODAY, request="first", kept=["app/src/auth/login.py"]),
+            MemoryEntry(at=TODAY, request="second", cut=["app/src/auth/login.py"]),
+        ]
+    )
+    scored = measure(candidates, index, Scope(slide_budget=2), memory)
+    assert scored["app/src/auth/login.py"]["memory"] == 0.0
+    assert scored["app/src/auth/session.py"]["memory"] == 1.0

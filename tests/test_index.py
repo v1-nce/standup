@@ -45,11 +45,14 @@ def test_walk_prunes_vendored_and_dotted_names(repo):
 def test_walk_prunes_test_and_example_directories(repo):
     (repo / "src" / "tests").mkdir(parents=True)
     (repo / "src" / "tests" / "test_hub.py").write_text("def test_x():\n    pass\n")
+    (repo / "spec" / "unit").mkdir(parents=True)
+    (repo / "spec" / "unit" / "hub_spec.py").write_text("def test_x():\n    pass\n")
     (repo / "examples" / "demo").mkdir(parents=True)
     (repo / "examples" / "demo" / "run.py").write_text("print('demo')\n")
 
     walked = {p.relative_to(repo).as_posix() for p in walk(repo)}
     assert "src/tests/test_hub.py" not in walked
+    assert "spec/unit/hub_spec.py" not in walked
     assert "examples/demo/run.py" not in walked
 
 

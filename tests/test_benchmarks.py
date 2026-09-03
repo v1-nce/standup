@@ -4,6 +4,7 @@ import re
 import pytest
 
 from benchmarks.benchmark import TrackedClient, _deck_sample, project
+from benchmarks.compounding import measure
 from benchmarks.metrics import (
     Pricing,
     cost_usd,
@@ -189,3 +190,11 @@ def test_benchmark_project_evicts_process_cache_when_disposed(repo):
 
     assert not root.exists()
     assert project_id not in pipeline._INDEX_CACHE
+
+
+def test_a_correction_compounds_into_the_next_select():
+    report = measure()
+
+    assert report["compounded"] is True
+    assert report["chosen_before_correction"] is False
+    assert report["chosen_after_correction"] is True

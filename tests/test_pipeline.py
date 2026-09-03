@@ -7,6 +7,7 @@ from pptx import Presentation
 
 from standup.core import index as index_module
 from standup.core import pipeline
+from standup.core import selection as selection_module
 from standup.core.gather import candidates
 from standup.core.index import docs
 from standup.core.models import Scope, Slide
@@ -134,6 +135,24 @@ def test_a_pure_reorder_grows_the_trace_by_nothing(store, project, index):
 def test_the_trace_is_empty_until_the_first_keep(store, project, index):
     pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
     assert pipeline.memory(store, project.id).entries == []
+
+
+def test_select_threads_the_projects_memory_into_ranking(store, project, index, monkeypatch):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    kept = deck.selection.chosen[0].candidate.id
+    pipeline.edit(store, project.id, [kept])
+
+    seen = {}
+    real_choose = selection_module.choose
+
+    def spy(index_, scope, cands, *, request, limit=None, memory=None):
+        seen["memory"] = memory
+        return real_choose(index_, scope, cands, request=request, limit=limit, memory=memory)
+
+    monkeypatch.setattr(selection_module, "choose", spy)
+    pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+
+    assert seen["memory"].entries[0].kept == [kept]
 
 
 def test_an_edit_blocks_while_the_projects_lock_is_held(store, project, index):
