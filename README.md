@@ -114,7 +114,7 @@ npm run build
 cd ..
 ```
 
-### 3. Add a model key
+### 3. Add a model
 
 Copy `.env.example` to `.env` and fill in **one** line:
 
@@ -122,11 +122,22 @@ Copy `.env.example` to `.env` and fill in **one** line:
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-or, free while developing:
+free while developing:
 
 ```
 GEMINI_API_KEY=AIza...
 ```
+
+or any OpenAI-compatible endpoint (OpenAI, OpenRouter, Groq, Ollama, LM Studio, vLLM, ...):
+
+```
+OPENAI_API_KEY=...
+LLM_BASE_URL=http://localhost:11434/v1   # or omit for api.openai.com
+LLM_MODEL=llama3.1                       # the model, in that endpoint's naming
+```
+
+`LLM_MODEL` picks the model for whichever provider is active; leave it empty to use that
+provider's default.
 
 ### 4. Start it!
 

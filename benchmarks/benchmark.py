@@ -37,10 +37,10 @@ from benchmarks.metrics import (
     rss_bytes,
 )
 from benchmarks.tasks import COLD_TASK, TASKS
-from standup.config import REPO_ROOT, settings
+from standup.config import REPO_ROOT
 from standup.core import agent, pipeline
 from standup.core.index.docs import IMAGE_MEDIA_TYPES
-from standup.core.llm import ModelClient, active_provider, from_settings
+from standup.core.llm import ModelClient, active_model, active_provider, from_settings
 from standup.core.models import ChatMessage, Scope
 from standup.core.projects import ChatLog, ProjectStore
 
@@ -212,7 +212,7 @@ async def _deck_sample(
 
 
 def _model_name() -> str:
-    return settings.gemini_model if active_provider() == "gemini" else settings.llm_model
+    return active_model() or ""
 
 
 def _pricing(args: argparse.Namespace, model: str) -> Pricing | None:

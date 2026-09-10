@@ -16,7 +16,7 @@ from benchmarks.metrics import (
 from benchmarks.tasks import COLD_TASK, TASKS
 from standup.core import pipeline
 from standup.core.agent import Turn
-from standup.core.agent.commands import Select, Write
+from standup.core.agent.commands import Keep, Select, Write
 from standup.core.models import Scope, Slide, VisualElement
 
 
@@ -47,6 +47,13 @@ class DeckModel:
             return Turn(
                 reply="",
                 changes_deck=True,
+                commands=[Keep(action="keep", ids=[candidate])],
+            )
+        if self.round == 3:
+            candidate = re.search(r"  (.+) \[no slide\]", prompt).group(1)
+            return Turn(
+                reply="",
+                changes_deck=True,
                 commands=[
                     Write(
                         action="write",
@@ -66,6 +73,9 @@ class DeckModel:
                 ],
             )
         return Turn(reply="Done")
+
+    async def describe_image(self, data, media_type, *, prompt, max_tokens=None):
+        return "The deck is readable."
 
     async def aclose(self):
         pass
@@ -177,9 +187,10 @@ def test_deck_sample_records_real_command_outcomes_without_assuming_converse_ret
 
     assert sample["success"] is True
     assert sample["written_slides"] == 1
-    assert len(sample["command_outcomes"]) == 2
+    assert len(sample["command_outcomes"]) == 3
     assert sample["command_outcomes"][0].startswith("select(")
-    assert sample["command_outcomes"][1].startswith("write(")
+    assert sample["command_outcomes"][1].startswith("keep(")
+    assert sample["command_outcomes"][2].startswith("write(")
 
 
 def test_benchmark_project_evicts_process_cache_when_disposed(repo):

@@ -3,9 +3,11 @@ from standup.config import Settings
 
 def test_defaults():
     s = Settings(_env_file=None)
-    assert s.llm_model == "claude-opus-5"
+    assert s.llm_model == ""
     assert s.llm_base_url is None
     assert s.anthropic_api_key == ""
+    assert s.gemini_api_key == ""
+    assert s.openai_api_key == ""
 
 
 def test_env_overrides(monkeypatch):

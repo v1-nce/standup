@@ -32,13 +32,13 @@ def test_model_status_reflects_settings(client, monkeypatch):
     }
 
 
-def test_model_status_names_gemini_and_its_own_model(client, monkeypatch):
+def test_model_status_names_any_provider_and_the_configured_model(client, monkeypatch):
     monkeypatch.setattr(settings, "llm_provider", "")
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     monkeypatch.setattr(settings, "gemini_api_key", "k")
-    monkeypatch.setattr(settings, "gemini_model", "gemini-flash-lite-latest")
+    monkeypatch.setattr(settings, "llm_model", "gemini-2.0-flash-exp")
     reported = client.get("/model").json()
-    assert (reported["provider"], reported["model"]) == ("gemini", "gemini-flash-lite-latest")
+    assert (reported["provider"], reported["model"]) == ("gemini", "gemini-2.0-flash-exp")
 
 
 def test_check_reports_unconfigured(client, monkeypatch):
@@ -46,6 +46,7 @@ def test_check_reports_unconfigured(client, monkeypatch):
     monkeypatch.setattr(settings, "llm_provider", "")
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     monkeypatch.setattr(settings, "gemini_api_key", "")
+    monkeypatch.setattr(settings, "openai_api_key", "")
     response = client.post("/model/check")
     assert response.status_code == 503
 

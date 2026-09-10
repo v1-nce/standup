@@ -27,6 +27,8 @@ def _translated():
 class LLMClient:
     """The Anthropic half of the model seam."""
 
+    default_model = "claude-opus-5"
+
     def __init__(
         self,
         *,
@@ -56,7 +58,7 @@ class LLMClient:
     def from_settings(cls) -> LLMClient:
         return cls(
             api_key=settings.anthropic_api_key,
-            model=settings.llm_model,
+            model=settings.llm_model or cls.default_model,
             max_tokens=settings.llm_max_tokens,
             max_concurrency=settings.llm_max_concurrency,
             timeout=settings.llm_timeout_seconds,

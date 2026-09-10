@@ -33,9 +33,9 @@ def health() -> Health:
 def model_status() -> ModelStatus:
     provider = llm.active_provider()
     return ModelStatus(
-        provider=provider,
-        model=settings.gemini_model if provider == "gemini" else settings.llm_model,
-        configured=provider is not None,
+        provider=provider if provider in llm.PROVIDERS else None,
+        model=llm.active_model() or "",
+        configured=provider in llm.PROVIDERS,
         via_gateway=settings.llm_base_url is not None,
     )
 

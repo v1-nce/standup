@@ -1,3 +1,4 @@
+import json
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +11,8 @@ from standup.core import pipeline
 from standup.core import selection as selection_module
 from standup.core.gather import candidates
 from standup.core.index import docs
-from standup.core.models import Scope, Slide
+from standup.core.models import Scope, Slide, SlidePlan
+from standup.core.present.preview import contact_sheet
 from standup.core.selection import choose
 from standup.errors import InvalidInput, NotFound
 from tests.conftest import TINY_PNG, pdf_saying
@@ -230,6 +232,31 @@ def test_writing_slides_that_match_the_selection_is_accepted(store, project, ind
     assert [s.candidate_id for s in written.slides] == [
         e.candidate.id for e in deck.selection.chosen
     ]
+
+
+def test_preview_renders_a_png_contact_sheet(store, project, index):
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    pipeline.write(store, project.id, index, slides_for(deck))
+    written = pipeline.read(store, project.id)
+
+    png = contact_sheet(SlidePlan(design=written.design, slides=written.slides or []))
+    assert png.startswith(b"\x89PNG")
+
+
+def test_slide_production_is_recorded_as_history(store, project, index):
+    """The current plan is overwritten each write; the production log is the growing record a
+    self-improving harness learns from."""
+    deck = pipeline.select(store, project.id, index, "standup", Scope(slide_budget=2))
+    first = deck.selection.chosen[0].candidate.id
+    pipeline.write(store, project.id, index, slides_for(deck))
+    pipeline.update(store, project.id, index, first, {"title": "Renamed"})
+
+    record = store.paths(project.id).deck / pipeline.SLIDES_FILE
+    events = [json.loads(line) for line in record.read_text(encoding="utf-8").splitlines()]
+    assert [event["action"] for event in events] == ["write", "update"]
+    assert [slide["title"] for slide in events[0]["slides"]] == ["A slide", "A slide"]
+    assert events[0]["slides"][0]["candidate_id"] == first
+    assert events[1]["slides"][0]["title"] == "Renamed"
 
 
 def test_writing_one_selected_slide_leaves_the_rest_unwritten(store, project, index):

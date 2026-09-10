@@ -121,12 +121,6 @@ def apply(store: ProjectStore, project_id: str, index: Index | None, command: Co
             case Keep():
                 return f"{echo(command)} -> {_standing(pipeline.edit(store, project_id, command.ids))}"
             case Write():
-                uncomposed = [slide.candidate_id for slide in command.slides if not slide.elements]
-                if uncomposed:
-                    return (
-                        f"{echo(command)} rejected: every newly written slide needs a non-empty "
-                        f"canvas composition; missing elements for {uncomposed}"
-                    )
                 deck = pipeline.write(store, project_id, index, command.slides, command.design)
                 return f"{echo(command)} -> {_standing(deck)}"
             case Update():

@@ -7,10 +7,19 @@ from datetime import UTC, datetime
 from pydantic import BaseModel
 
 from standup.core import pipeline
-from standup.core.agent.commands import Command, apply, echo
+from standup.core.agent.commands import Command, Write, apply, echo
 from standup.core.llm import ModelClient
-from standup.core.models import ChatMessage, Deck, Index, Memory, Scope, Slide
-from standup.core.present import evidence
+from standup.core.models import (
+    ChatMessage,
+    Deck,
+    Index,
+    Memory,
+    Scope,
+    Slide,
+    SlidePlan,
+)
+from standup.core.present import evidence, order_fault
+from standup.core.present.preview import contact_sheet
 from standup.core.projects import ChatLog, ProjectStore
 from standup.errors import NotFound
 
@@ -28,6 +37,9 @@ MAX_CONTEXT_RESOURCES = 20
 # score descending and `edited` puts the just-cut shortlist first, so the head is exactly those.
 MAX_CUT_CANDIDATES = 20
 MAX_PREFERENCES = 15
+# The model's own working memory, carried between rounds. Bounded on the way back in so a verbose
+# model can't inflate every later round's prompt.
+MAX_NOTES_CHARS = 800
 _TERM = re.compile(r"[a-z0-9_.-]{3,}")
 _BORING_TERMS = {"about", "attached", "document", "file", "files", "tell", "what", "with"}
 
@@ -37,8 +49,10 @@ person who will present it, and you answer them the way a colleague would.
 Put a deck change in `commands`, with exactly one command per round. The command runs before you
 see the next round, so never guess the result of `select` and never batch operations against stale
 state. Set `changes_deck` true whenever the person asked to create or change the deck, even if you
-cannot name a command yet. Leave `commands` empty once the deck needs no more work. `reply` is what
-the person reads, so write it only with empty `commands`; while working, leave it empty too.
+cannot name a command yet. Leave `commands` empty once the deck needs no more work. `notes` is your
+private working memory: while working, write a few sentences on your plan, what you just decided and
+why, and what remains, so the next round can pick up where you left off. `reply` is what the person
+reads, so write it only with empty `commands`; while working, leave it empty too.
 For ordinary questions about the project or attached context, answer directly with no commands and
 set `changes_deck` false.
 
@@ -71,11 +85,10 @@ once `write` has given that id a slide. `keep` places slides, it does not create
 
 write - create or replace complete slides. Slides you leave out remain byte-for-byte unchanged.
 It may also set `design` while creating a deck, avoiding a separate styling round.
-  Keep title, subtitle, bullets, secondary content, image and speaker_notes as the accessible,
-  grounded outline. `elements` is REQUIRED and must be non-empty on every slide you write: ordered
-  layers on a 100×100 canvas. The command is rejected without them. Legacy layout fields are only
-  for reading old decks; never use them as the design. Put every visible word, including the title,
-  in a text element—the outline does not paint itself once a canvas composition exists.
+  Put the story in the outline: title, subtitle, bullets, secondary content, image and speaker_notes.
+  `elements` is optional. Leave it empty and the renderer composes a clean layout from the outline;
+  pick its shape with `layout` (cover, section, content, two_column, statement, image). Author
+  `elements` only when you want a specific composition, which overrides the composed layout.
   Each element needs a stable id, kind, x, y, width and height. Coordinates are percentages.
     text: text, color, font_size (6-96), font_weight, optional font_family, align and valign.
     shape: rectangle, rounded, ellipse, triangle or chevron; fill, stroke and stroke_width.
@@ -233,6 +246,9 @@ def _deck_blocker(deck: Deck | None) -> str | None:
     if missing:
         names = ", ".join(item.split("/")[-1] for item in missing)
         return f"still needs evidence slides for: {names}"
+    fault = order_fault(deck.slides or [], deck.selection)
+    if fault:
+        return fault
     return None
 
 
@@ -250,6 +266,40 @@ def _blocker_note(blocker: str) -> str:
     if blocker in (_NO_MATCHES, _NOTHING_RAN):
         return blocker
     return f"The deck {blocker}. Write it now."
+
+
+def _write_blocker(current: Deck | None, command: Command) -> str | None:
+    """Slides must wait for `keep`: a `select` leaves an uncut shortlist, and writing against it
+    (three of eighteen candidates, say) is how a deck ends up "still needs evidence slides" for a
+    dozen candidates the model never intended to finish."""
+    if current is None or not isinstance(command, Write):
+        return None
+    wanted = len(current.selection.chosen)
+    budget = current.selection.scope.slide_budget
+    if wanted > budget:
+        return (
+            f"{echo(command)} rejected: select returned {wanted} candidates; "
+            f"cut to {budget} with keep before writing slides"
+        )
+    return None
+
+
+async def _visual_review(client: ModelClient, deck: Deck | None) -> str:
+    """Render the deck and ask the model to critique its own work — the eyes-and-ears step. Skipped
+    for clients that cannot see images."""
+    describe = getattr(client, "describe_image", None)
+    if describe is None or not deck or not deck.slides:
+        return ""
+    plan = SlidePlan(design=deck.design, slides=deck.slides)
+    png = await asyncio.to_thread(contact_sheet, plan)
+    return await describe(
+        png,
+        "image/png",
+        prompt=(
+            "This is the current slide deck. In 2-3 sentences, critique its visual quality: "
+            "hierarchy, readability, density, and anything that looks unfinished or off."
+        ),
+    )
 
 
 def _indexed_excerpts(index: Index | None, history: list[ChatMessage]) -> str:
@@ -326,6 +376,7 @@ def _prompt(
     *,
     last: bool,
     may_command: bool = False,
+    notes: str = "",
 ) -> str:
     """Stable first, volatile last, so a cached prefix stays a prefix when caching lands."""
     try:
@@ -344,13 +395,9 @@ def _prompt(
     said = "\n".join(f"{message.role}: {message.content}" for message in recent)
     cited = ""
     if deck and index:
-        # Full source is only worth its tokens once the model is writing the kept candidates. While
-        # the shortlist still holds overscan x budget items (select done, keep pending), ids, symbols
-        # and commit messages are enough to make the cut - so don't read or emit each file's source
-        # for candidates the model is about to throw away.
-        shortlisting = len(deck.selection.chosen) > deck.selection.scope.slide_budget
-        sources = None if shortlisting else _sources(store, project_id, deck)
-        cited = evidence(deck.selection, index, sources)
+        # The cut is the turn's highest-leverage decision; the model must see what each shortlist
+        # candidate actually says before it throws it away. Ids and symbols alone starve it.
+        cited = evidence(deck.selection, index, _sources(store, project_id, deck))
     preferences = _preferences(pipeline.memory(store, project_id)) if deck else ""
     blocks = [
         # Stable across every round of this turn - changes only between turns, if at all.
@@ -364,6 +411,8 @@ def _prompt(
     if preferences:
         blocks.append(f"PREFERENCES\n{preferences}")
     blocks.append(f"EVIDENCE\n{cited}")
+    if notes:
+        blocks.append(f"YOUR NOTES\n{notes[:MAX_NOTES_CHARS]}")
     if results:
         blocks.append("RESULTS THIS TURN\n" + "\n".join(results))
     if last:
@@ -381,9 +430,10 @@ def _prompt(
 class Turn(BaseModel):
     """One bounded decision: one operation, or an answer."""
 
-    reply: str
+    reply: str = ""
     changes_deck: bool = False
     commands: list[Command] = []
+    notes: str = ""
 
 
 async def converse(
@@ -405,13 +455,15 @@ async def converse(
     index = await pipeline.indexed(store, project_id)
     when = today or datetime.now(UTC)
     results: list[str] = []
+    notes = ""
     changed = False
     change_expected = False
     stalled = False
+    reviewed = False
 
-    async def ask(*, last: bool, may_command: bool) -> Turn:
+    async def ask(*, last: bool, may_command: bool, notes: str) -> Turn:
         prompt = await asyncio.to_thread(
-            _prompt, store, project_id, index, history, results, when, last=last, may_command=may_command
+            _prompt, store, project_id, index, history, results, when, last=last, may_command=may_command, notes=notes
         )
         return await client.structured(prompt, Turn, system=SYSTEM)
 
@@ -431,7 +483,8 @@ async def converse(
         complete = changed and blocker is None
         final_operation = not complete and round_number == MAX_ROUNDS - 1
         last = complete or final_operation
-        turn = await ask(last=last, may_command=final_operation)
+        turn = await ask(last=last, may_command=final_operation, notes=notes)
+        notes = turn.notes
         change_expected = change_expected or turn.changes_deck or bool(turn.commands)
 
         if last and not final_operation:
@@ -463,7 +516,8 @@ async def converse(
             continue
 
         command = turn.commands[0]
-        outcome = await asyncio.to_thread(apply, store, project_id, index, command)
+        blocked = _write_blocker(current, command)
+        outcome = blocked if blocked is not None else await asyncio.to_thread(apply, store, project_id, index, command)
         await record(outcome)
         results.append(outcome)
         if outcome.startswith(f"{echo(command)} rejected:"):
@@ -472,7 +526,13 @@ async def converse(
             changed = True
             stalled = False
 
-        blocker = _deck_blocker(await deck()) if changed else None
+        current = await deck()
+        blocker = _deck_blocker(current) if changed else None
+        if changed and blocker is None and not reviewed:
+            critique = await _visual_review(client, current)
+            if critique:
+                results.append("VISUAL REVIEW\n" + critique)
+            reviewed = True
         if blocker == _NO_MATCHES:
             return _blocked_reply(blocker)
         if blocker:

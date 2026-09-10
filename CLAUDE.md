@@ -12,9 +12,9 @@ The user registers resources once — a codebase **and its git history**, docume
 
 ## What exists
 
-Verified 2026-08-24. **Backend: 320 tests. Frontend: 40.** Both in CI.
+Verified 2026-08-24. **Backend: 347 tests. Frontend: 40.** Both in CI.
 
-- **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (deterministic scope validation + candidates), selection (five signals, weights, MMR), present (groundedness validation, `.pptx`), the agent loop and its deterministic commands, the job runner, the project store and chat log, the provider seam over Anthropic and Gemini, and the HTTP API over all of it.
+- **Built and working** — index (tree-sitter symbols, import graph, git history, doc emphasis), gather (deterministic scope validation + candidates), selection (five signals, weights, MMR), present (groundedness validation, `.pptx`), the agent loop and its deterministic commands, the job runner, the project store and chat log, the provider seam over Anthropic, Gemini, and any OpenAI-compatible endpoint, and the HTTP API over all of it.
 - **Wired end to end** — the GUI reads and writes real projects, sends a message, polls the job, and renders the deck the agent wrote. Types are generated from the backend's OpenAPI schema.
 - **Context is what a project may draw on** — created from a name alone, then given **many folders and many documents** through the `+`. **A folder is named by its path; a document is handed over whole** — a page is never told where a dropped file lives, and that asymmetry is the whole design rather than something to hide. So: a path field with an `Add`, and a drop zone with an `Add file` over `<input type="file">`. Two attempts to make it one control were built and both deleted — an in-app file browser, then the machine's own dialog through `POST /pick` (`ctypes` over `GetOpenFileNameW`, with the filename box carrying a sentinel so one dialog could return a folder). Both worked and both read as vibed. **Nothing platform-specific survives**; the browser does the only part it is allowed to do. A folder is referenced where it lives; a document is copied in, whether picked or dropped. Attaching never returns 409 — indexing queues per project instead of refusing, which is what "one job per project" got wrong. Each resource is indexed and cached on its own; `index.merged` prefixes every path with its resource id, so `repo-a/src/main.py` cannot collide with `repo-b/src/main.py`, and then ranks the whole set **once**. Rank is relative: computed per resource and merged, a lone attached file would score ≈1.0 and flatten a 3000-file repository to ≈0. A document's extracted text is its only evidence, so it travels on `FileFacts.excerpt` and reaches both `evidence` and `_affinity`.
 - **Not built** — diagrams, SSE, prompt caching, packaging. Briefs were a designed stage and the empty seam holding their place is now **deleted**; they return only if the quality benchmark earns them — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §6.
@@ -66,9 +66,10 @@ decisions on record, not claims about the code.
 
 | | |
 |---|---|
-| Anthropic SDK, `claude-opus-5` | `messages.parse()` + Pydantic gives schema-bound output with SDK-level retry |
-| Gemini via AI Studio REST | A **free stand-in for development**, behind the same interface. `gemini-flash-lite-latest` — the thinking models spend their whole budget before answering. Weaker at following the scope prompt than Opus; don't tune anything against it |
-| Vision, both providers | An attached image has no text to extract, so `read()` sends it as an image content block and caches the reply by content hash. **The one exception to "indexing never touches the model"** — everything else in the index is derived for free; an image's evidence costs one call, made once, at attach time |
+| Anthropic SDK | `messages.parse()` + Pydantic gives schema-bound output with SDK-level retry. Default model `claude-opus-5` |
+| Gemini via AI Studio REST | A **free stand-in for development**, behind the same interface. The thinking models spend their whole budget before answering. Weaker at following the scope prompt than Opus; don't tune anything against it |
+| OpenAI-compatible REST | Any endpoint that speaks the OpenAI chat-completions wire format — OpenAI, OpenRouter, Groq, Ollama, LM Studio, vLLM. This is what makes Standup model agnostic: `LLM_BASE_URL` + `OPENAI_API_KEY` + `LLM_MODEL` point at any model |
+| Vision, every provider | An attached image has no text to extract, so `read()` sends it as an image content block and caches the reply by content hash. **The one exception to "indexing never touches the model"** — everything else in the index is derived for free; an image's evidence costs one call, made once, at attach time |
 | Prompt caching | Stable repo prefix first, volatile content last (512-token minimum on Opus 5). **Not built** |
 | Batch API | **Benchmarks only.** 50% cheaper, hour-scale latency — fatal for interactive use. **Not built** |
 
@@ -81,7 +82,7 @@ Standup is installed and run on the user's own machine. It cannot call a model u
 | **Bring your own key** | The user pastes a provider key. Requests go straight to that provider. We never see the traffic and earn nothing. | User → provider |
 | **Subscription** | The user signs in. Requests route through our hosted gateway, which holds the real key. | User → us; we earn the margin |
 
-Both live behind one interface in `src/standup/core/llm/`. **Nothing outside that folder knows which path is active** — not the stages, not the pipeline, not the API. Errors from both are mapped to the same typed failures, or the abstraction leaks the first time a subscription lapses.
+Both live behind one interface in `src/standup/core/llm/`. **Nothing outside that folder knows which path or provider is active** — not the stages, not the pipeline, not the API. BYOK spans three providers behind that seam (Anthropic, Gemini, any OpenAI-compatible endpoint), selected with `LLM_PROVIDER`/`LLM_MODEL`. Errors are mapped to the same typed failures regardless, or the abstraction leaks the first time a subscription lapses.
 
 Subscription is the frictionless default and the revenue; BYOK is not a grudging fallback and must not rot. If a change makes one path work and the other break, it isn't done.
 

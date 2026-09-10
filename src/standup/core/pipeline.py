@@ -1,6 +1,7 @@
 """The project's deck on disk. Every function here is deterministic; only agent/ calls the model."""
 
 import asyncio
+import json
 import threading
 from collections import defaultdict
 from collections.abc import Iterable
@@ -33,6 +34,7 @@ SELECTION_FILE = "selection.json"
 PLAN_FILE = "plan.json"
 DECK_FILE = "deck.pptx"
 MEMORY_FILE = "memory.json"
+SLIDES_FILE = "slides.jsonl"
 # ponytail: the head of a file, which carries its docstring, imports and first definitions. A change
 # made at the bottom of a long file is missed; the upgrade is the commit's diff, once history keeps
 # more than line counts.
@@ -168,6 +170,23 @@ def _put(store: ProjectStore, project_id: str, name: str, document: Selection | 
     home = _room(store, project_id)
     home.mkdir(parents=True, exist_ok=True)
     atomic_write(home / name, document.model_dump_json(indent=2))
+
+
+def _record_slides(store: ProjectStore, project_id: str, action: str, slides: list[Slide]) -> None:
+    """Append one production event: the slides a write/update just produced, in full.
+
+    This is the seed of the self-improving harness — a growing, inspectable history of what the
+    model wrote — separate from the current plan, which is overwritten each time.
+    """
+    room = _room(store, project_id)
+    room.mkdir(parents=True, exist_ok=True)
+    record = {
+        "at": datetime.now(UTC).isoformat(),
+        "action": action,
+        "slides": [slide.model_dump(mode="json") for slide in slides],
+    }
+    with (room / SLIDES_FILE).open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record) + "\n")
 
 
 def read(store: ProjectStore, project_id: str) -> Deck:
@@ -338,6 +357,7 @@ def write(
             raise InvalidInput("; ".join(faults))
 
         _put(store, project_id, PLAN_FILE, merged)
+        _record_slides(store, project_id, "write", slides)
     return Deck(selection=chosen, design=merged.design, slides=merged.slides)
 
 
@@ -379,6 +399,7 @@ def update(
         slides = [revised if slide.candidate_id == slide_id else slide for slide in written.slides]
         plan = SlidePlan(design=written.design, slides=slides)
         _put(store, project_id, PLAN_FILE, plan)
+        _record_slides(store, project_id, "update", [revised])
     return Deck(selection=chosen, design=plan.design, slides=plan.slides)
 
 

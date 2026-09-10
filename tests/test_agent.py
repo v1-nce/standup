@@ -31,12 +31,17 @@ class StubClient:
     def __init__(self, *turns: Turn) -> None:
         self.turns = list(turns)
         self.prompts: list[str] = []
+        self.described: list[str] = []
         self.system: str | None = None
 
     async def structured(self, prompt, schema, *, system=None, max_tokens=None):
         self.prompts.append(prompt)
         self.system = system
         return self.turns.pop(0)
+
+    async def describe_image(self, data, media_type, *, prompt, max_tokens=None):
+        self.described.append(media_type)
+        return "The deck is readable but the third slide is dense."
 
 
 async def talk(client, store, project_id, *messages):
@@ -65,6 +70,17 @@ def paint(slide: Slide) -> Slide:
             ]
         }
     )
+
+
+def test_a_working_turn_may_omit_reply():
+    # A turn that is only commands + notes is a working round; `reply` must default to "", not be
+    # required — a model that omits it (Gemini did exactly this) must not fail validation.
+    turn = Turn(
+        notes="Keeping the router; the leaf is out.",
+        commands=[Select(action="select", request="standup", scope=Scope(slide_budget=1))],
+    )
+    assert turn.reply == ""
+    assert turn.notes == "Keeping the router; the leaf is out."
 
 
 def test_select_derives_a_shortlist_and_says_what_still_needs_writing(store, project, index):
@@ -220,7 +236,7 @@ def test_an_unexpected_failure_in_apply_comes_back_as_text_not_a_crash(store, pr
     assert result == "select(budget=1, request='s') rejected: RuntimeError: boom"
 
 
-def test_write_refuses_a_new_slide_without_a_canvas_composition(store, project, index):
+def test_a_content_only_slide_composes_without_hand_placed_elements(store, project, index):
     apply(store, project.id, index, Select(action="select", request="s", scope=Scope(slide_budget=1)))
     slide_id = pipeline.read(store, project.id).selection.chosen[0].candidate.id
 
@@ -228,11 +244,28 @@ def test_write_refuses_a_new_slide_without_a_canvas_composition(store, project, 
         store,
         project.id,
         index,
-        Write(action="write", slides=[Slide(candidate_id=slide_id, title="Template fallback")]),
+        Write(
+            action="write",
+            slides=[Slide(candidate_id=slide_id, title="Template fallback", bullets=["a"])],
+        ),
     )
 
-    assert "rejected" in result and "non-empty canvas composition" in result
-    assert pipeline.read(store, project.id).slides is None
+    assert "rejected" not in result
+    written = pipeline.read(store, project.id).slides
+    assert written[0].title == "Template fallback"
+    assert written[0].elements == []
+
+
+def test_write_is_blocked_until_the_shortlist_is_cut(store, project, index):
+    # select leaves an uncut shortlist (budget 1 x overscan 3 = 2 candidates here); writing before
+    # keep is the failure the agent produced, so the loop rejects it with keep guidance.
+    deck = pipeline.select(store, project.id, index, "s", Scope(slide_budget=1), overscan=3)
+    blocked = agent._write_blocker(deck, Write(action="write", slides=[]))
+    assert blocked is not None and "cut to 1 with keep" in blocked
+
+    pipeline.edit(store, project.id, [deck.selection.chosen[0].candidate.id])
+    cut = pipeline.read(store, project.id)
+    assert agent._write_blocker(cut, Write(action="write", slides=[])) is None
 
 
 def test_an_ungrounded_slide_is_rejected_with_the_reason(store, project, index):
@@ -357,6 +390,89 @@ async def test_a_successful_build_uses_four_calls(store, project, index):
     # No .pptx is written during a turn: the file is produced when it is downloaded.
     assert not (store.paths(project.id).deck / pipeline.DECK_FILE).exists()
     assert pipeline.render(store, project.id).is_file()
+
+
+async def test_a_complete_deck_is_reviewed_visually(store, project, index):
+    scope = Scope(slide_budget=1)
+    chosen = pipeline.select(store, project.id, index, "peek", scope).selection.chosen[0]
+    (store.paths(project.id).deck / pipeline.SELECTION_FILE).unlink()
+
+    client = StubClient(
+        Turn(reply="", changes_deck=True, commands=[Select(action="select", request="standup", scope=scope)]),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=[chosen.candidate.id])]),
+        Turn(
+            reply="",
+            changes_deck=True,
+            commands=[
+                Write(
+                    action="write",
+                    slides=[paint(Slide(candidate_id=chosen.candidate.id, title="Router", bullets=["a"]))],
+                )
+            ],
+        ),
+        Turn(reply="Done."),
+    )
+
+    await talk(client, store, project.id, "standup tomorrow")
+    assert client.described == ["image/png"]
+    assert "VISUAL REVIEW" in client.prompts[-1]
+
+
+async def test_working_notes_carry_to_the_next_round(store, project, index):
+    scope = Scope(slide_budget=1)
+    chosen = pipeline.select(store, project.id, index, "peek", scope).selection.chosen[0]
+    (store.paths(project.id).deck / pipeline.SELECTION_FILE).unlink()
+
+    client = StubClient(
+        Turn(
+            reply="",
+            changes_deck=True,
+            notes="Keeping the router; the leaf is out.",
+            commands=[Select(action="select", request="standup", scope=scope)],
+        ),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=[chosen.candidate.id])]),
+        Turn(
+            reply="",
+            changes_deck=True,
+            commands=[
+                Write(
+                    action="write",
+                    slides=[paint(Slide(candidate_id=chosen.candidate.id, title="Router", bullets=["a"]))],
+                )
+            ],
+        ),
+        Turn(reply="Done."),
+    )
+
+    await talk(client, store, project.id, "standup tomorrow")
+    assert "YOUR NOTES" in client.prompts[1]
+    assert "Keeping the router; the leaf is out." in client.prompts[1]
+
+
+async def test_the_cut_sees_each_candidates_source(store, project, index):
+    scope = Scope(slide_budget=1)
+    chosen = pipeline.select(store, project.id, index, "peek", scope).selection.chosen[0]
+    (store.paths(project.id).deck / pipeline.SELECTION_FILE).unlink()
+
+    client = StubClient(
+        Turn(reply="", changes_deck=True, commands=[Select(action="select", request="standup", scope=scope)]),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=[chosen.candidate.id])]),
+        Turn(
+            reply="",
+            changes_deck=True,
+            commands=[
+                Write(
+                    action="write",
+                    slides=[paint(Slide(candidate_id=chosen.candidate.id, title="Router", bullets=["a"]))],
+                )
+            ],
+        ),
+        Turn(reply="Done."),
+    )
+
+    await talk(client, store, project.id, "standup tomorrow")
+    # The keep round must see the file's actual content, not just its id and symbols.
+    assert "class Router" in client.prompts[1]
 
 
 async def test_an_incomplete_deck_can_use_the_final_budgeted_call_to_write(store, project, index):

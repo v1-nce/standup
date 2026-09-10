@@ -10,8 +10,8 @@ from standup.core import llm
 UNCONFIGURED = """Standup needs a model before it can do anything. Three ways:
 
   1. Subscribe   - sign in, we hold the key
-  2. Your key    - ANTHROPIC_API_KEY or GEMINI_API_KEY in ~/.standup/.env
-  3. Local model - LLM_BASE_URL in the same file
+  2. Your key    - ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY in ~/.standup/.env
+  3. Local model - LLM_BASE_URL + OPENAI_API_KEY + LLM_MODEL (Ollama, LM Studio, vLLM, ...)
 
 Indexing a project works without any of them; only writing slides needs one."""
 
