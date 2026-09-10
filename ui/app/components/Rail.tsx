@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { Project } from "@/app/api/client";
+import { ConfirmDialog } from "@/app/components/ConfirmDialog";
 import { IconButton, MenuPath } from "@/app/components/IconButton";
 import { NewProject } from "@/app/components/NewProject";
 import { ProjectRow } from "@/app/components/ProjectRow";
@@ -20,50 +22,62 @@ export function Rail({
   projects: Projects;
   selectedId: string | null;
 }) {
+  const [pendingDelete, setPendingDelete] = useState<Project | null>(null);
+
   const register = (name: string) =>
     create(name).then((made) => {
       if (made) onSelect(made.id);
       return made;
     });
 
-  const confirmDelete = (project: Project) => {
-    if (!window.confirm(`Delete ${project.name}? Everything derived from it goes too.`)) return;
-    void remove(project.id);
-  };
-
   return (
-    <aside
-      className={`fixed z-30 flex h-dvh flex-col overflow-hidden border-r border-rule bg-paper transition-[width] duration-200 ease-out lg:static ${
-        open ? "w-60" : "w-0"
-      }`}
-    >
-      <div className="flex h-14 shrink-0 items-center gap-1 px-2">
-        <IconButton label="Close projects" onClick={onToggle}>
-          {MenuPath}
-        </IconButton>
-        <span className="label pl-1">Projects</span>
-      </div>
+    <>
+      <aside
+        className={`fixed z-30 flex h-dvh flex-col overflow-hidden border-r border-ink transition-[width] duration-200 ease-out lg:static ${
+          open ? "w-64" : "w-0"
+        }`}
+      >
+        <div className="flex h-16 shrink-0 items-center gap-2 border-b border-ink px-3">
+          <IconButton className="h-9 w-9" label="Close projects" onClick={onToggle}>
+            {MenuPath}
+          </IconButton>
+          <span className="label">Projects</span>
+        </div>
 
-      <div className="min-w-60 shrink-0 px-3 pb-3">
-        <NewProject onCreate={register} />
-      </div>
+        <div className="min-w-64 shrink-0 px-3 py-3">
+          <NewProject onCreate={register} />
+        </div>
 
-      <nav className="scroll-thin flex min-h-0 min-w-60 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3">
-        {error && <p className="px-3 py-2 font-mono text-xs text-accent">{error}</p>}
-        {!error && projects.length === 0 && (
-          <p className="px-3 py-2 font-mono text-xs text-muted">No projects yet</p>
-        )}
-        {projects.map((project) => (
-          <ProjectRow
-            key={project.id}
-            onDelete={() => confirmDelete(project)}
-            onRename={(name) => void rename(project.id, name)}
-            onSelect={() => onSelect(project.id)}
-            project={project}
-            selected={project.id === selectedId}
-          />
-        ))}
-      </nav>
-    </aside>
+        <nav className="scroll-thin flex min-h-0 min-w-64 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
+          {error && <p className="stamp-ink px-3 py-2 font-mono text-xs">{error}</p>}
+          {!error && projects.length === 0 && (
+            <p className="px-1 py-2 font-mono text-xs text-ink-soft">No projects yet</p>
+          )}
+          {projects.map((project) => (
+            <ProjectRow
+              key={project.id}
+              onDelete={() => setPendingDelete(project)}
+              onRename={(name) => void rename(project.id, name)}
+              onSelect={() => onSelect(project.id)}
+              project={project}
+              selected={project.id === selectedId}
+            />
+          ))}
+        </nav>
+      </aside>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          confirmLabel="Delete"
+          description="Everything derived from it goes too."
+          title={`Delete ${pendingDelete.name}?`}
+          onClose={() => setPendingDelete(null)}
+          onConfirm={() => {
+            void remove(pendingDelete.id);
+            setPendingDelete(null);
+          }}
+        />
+      )}
+    </>
   );
 }

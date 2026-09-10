@@ -1,95 +1,140 @@
 @import "tailwindcss";
 
-/* A printed page: warm paper, one signal red, everything else ink and hairline. */
+/* SCRATCH — stark monochrome neo-brutalism on drafting paper. #FFFFFF and #000000 only. */
 :root {
-  --paper: #f4efe5;
-  --surface: #fdfbf7;
-  --ink: #1b1a18;
-  --muted: #7a7267;
-  --rule: #d5cbba;
-  --accent: #c1272d;
-  --dot: #c1272d59;
+  --canvas: #ffffff;
+  --ink: #000000;
+  --ink-soft: rgb(0 0 0 / 0.6);
+  --ink-faint: rgb(0 0 0 / 0.3);
+  --ink-ghost: rgb(0 0 0 / 0.15);
+  --shadow: 1px 1px 0 0 #000000;
+  --shadow-lg: 2px 2px 0 0 #000000;
+  color-scheme: light;
+}
+
+/* Dark mode: the same monochrome sheet, ink and paper swapped. */
+.dark {
+  --canvas: #000000;
+  --ink: #ffffff;
+  --ink-soft: rgb(255 255 255 / 0.6);
+  --ink-faint: rgb(255 255 255 / 0.3);
+  --ink-ghost: rgb(255 255 255 / 0.15);
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-paper: var(--paper);
-  --color-surface: var(--surface);
+  --color-paper: var(--canvas);
   --color-ink: var(--ink);
-  --color-muted: var(--muted);
-  --color-rule: var(--rule);
-  --color-accent: var(--accent);
+  /* The deck preview's hairline frame; faint ink, never a gray. */
+  --color-rule: var(--ink-ghost);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-ink-ghost: var(--ink-ghost);
 
-  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-space-mono), ui-monospace, "SF Mono", "Courier Prime", monospace;
+
+  --shadow-hard: var(--shadow);
+  --shadow-hard-lg: var(--shadow-lg);
+}
+
+/* Shared button press: a mechanical 1px lift with a hard shadow step. */
+@utility press {
+  transition:
+    transform 150ms cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 150ms cubic-bezier(0.25, 1, 0.5, 1),
+    background-color 150ms cubic-bezier(0.25, 1, 0.5, 1),
+    color 150ms cubic-bezier(0.25, 1, 0.5, 1);
+
+  &:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  &:active:not(:disabled) {
+    transform: none;
+    box-shadow: var(--shadow);
+  }
 }
 
 body {
-  background: var(--paper);
+  background-color: var(--canvas);
+  background-image:
+    linear-gradient(
+      to right,
+      transparent 0,
+      transparent 63px,
+      var(--ink-faint) 64px,
+      transparent 65px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent,
+      transparent 23px,
+      var(--ink-ghost) 24px
+    );
   color: var(--ink);
-  font-family: var(--font-sans);
-}
-
-.halftone {
-  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
-  background-size: 6px 6px;
-  mask-image: radial-gradient(ellipse at center, #000 30%, transparent 72%);
-}
-
-/* Every label in this design is mono, uppercase, letterspaced. */
-.label {
   font-family: var(--font-mono);
+}
+
+/* Every label is mono, uppercase, wide-tracked — a ledger caption. */
+.label {
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+/* A stamp: framed micro-copy, an archival mark in the margin. */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--ink);
+  padding: 0.125rem 0.5rem;
   font-size: 0.6875rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted);
+  font-weight: 700;
+  line-height: 1.4;
 }
 
-.stamp {
-  display: inline-block;
-  padding: 0.25rem 0.6rem;
-  border: 1px solid var(--ink);
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  letter-spacing: 0.06em;
+/* Inverted stamp: an ink block carrying white type. */
+.stamp-ink {
+  background: var(--ink);
+  color: var(--canvas);
 }
 
-/* The rail's inline fields: renaming a project in place, and registering a new one. Both are
-   autofocused and outlined by their own border, so neither wants the global focus ring. */
+/* Inputs: bottom-rule only, no browser outline, a monospaced caret. */
 .field {
   width: 100%;
-  border: 1px solid var(--ink);
-  background: var(--surface);
-  padding: 0.375rem 0.75rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  padding: 0.375rem 0;
   font-family: var(--font-mono);
   font-size: 0.875rem;
   outline: none;
+  caret-color: var(--ink);
+}
+
+.field:focus {
+  border-bottom-width: 2px;
 }
 
 .field:disabled {
-  color: var(--muted);
+  opacity: 0.4;
 }
 
-.figure {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+.field::placeholder {
+  color: var(--ink-faint);
 }
 
-.pip {
-  display: inline-block;
-  width: 0.4rem;
-  height: 0.4rem;
-  border: 1px solid var(--accent);
-  border-radius: 9999px;
-}
-
-.pip-on {
-  background: var(--accent);
-}
-
-/* The platform scrollbar is a grey slab on warm paper. Hairline, in-palette, both engines. */
+/* The platform scrollbar is ink on paper, not a grey slab. */
 .scroll-thin {
   scrollbar-width: thin;
-  scrollbar-color: var(--rule) transparent;
+  scrollbar-color: var(--ink-faint) transparent;
 }
 
 .scroll-thin::-webkit-scrollbar {
@@ -102,29 +147,30 @@ body {
 }
 
 .scroll-thin::-webkit-scrollbar-thumb {
-  background: var(--rule);
-  border-radius: 9999px;
+  background: var(--ink-faint);
+  border-radius: 0;
 }
 
 .scroll-thin::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
+  background: var(--ink-soft);
 }
 
-/* A slide arrives rather than snaps. Keyed on the slide index, so it replays per step. */
+/* A slide arrives mechanically, not with a bounce. */
 .rise {
-  animation: rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: rise 150ms cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
 }
 
 @layer base {
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
   }
 }
 

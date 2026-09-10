@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import type { Project } from "@/app/api/client";
 import { IconButton, PencilPath, TrashPath } from "@/app/components/IconButton";
 
-const ACTION = "h-8 w-8 text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100";
+const ACTION = "h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100";
 
 /** One project in the rail: pick it, rename it in place, or delete it. */
 export function ProjectRow({
@@ -57,25 +57,35 @@ export function ProjectRow({
   }
 
   return (
-    <div className={`group flex items-center rounded-sm ${selected ? "bg-ink/5" : ""}`}>
+    <div className="group flex items-center">
       <button
-        className={`min-w-0 flex-1 truncate px-3 py-2 text-left font-mono text-sm ${
-          selected ? "text-ink" : "text-muted"
-        }`}
+        className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-left"
         onClick={onSelect}
       >
-        {project.name}
+        <span
+          aria-hidden
+          className={`inline-block h-2.5 w-2.5 shrink-0 border border-ink ${
+            selected ? "bg-ink" : ""
+          }`}
+        />
+        <span
+          className={`min-w-0 flex-1 truncate font-mono text-sm ${
+            selected ? "font-bold" : ""
+          }`}
+        >
+          {project.name}
+        </span>
       </button>
 
       <IconButton
-        className={`${ACTION} hover:text-ink`}
+        className={ACTION}
         label={`Rename ${project.name}`}
         onClick={() => setEditing(true)}
       >
         {PencilPath}
       </IconButton>
       <IconButton
-        className={`${ACTION} hover:text-accent`}
+        className={ACTION}
         label={`Delete ${project.name}`}
         onClick={onDelete}
       >

@@ -19,7 +19,11 @@ function show(overrides: Partial<Projects> = {}, onSelect = vi.fn()) {
   return { projects, onSelect };
 }
 
-beforeEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  vi.unstubAllGlobals();
+  HTMLDialogElement.prototype.showModal = vi.fn();
+  HTMLDialogElement.prototype.close = vi.fn();
+});
 
 test("lists what it was given and reports the picked one", () => {
   const { onSelect } = show();
@@ -64,12 +68,13 @@ test("the blur a real browser fires when escape unmounts the field doesn't resur
 test("deleting asks first, and a refusal changes nothing", () => {
   const { projects } = show();
 
-  vi.stubGlobal("confirm", vi.fn(() => false));
   fireEvent.click(screen.getByRole("button", { name: "Delete standup" }));
+  expect(screen.getByText("Delete standup?")).toBeDefined();
+  fireEvent.click(screen.getByText("Cancel"));
   expect(projects.remove).not.toHaveBeenCalled();
 
-  vi.stubGlobal("confirm", vi.fn(() => true));
   fireEvent.click(screen.getByRole("button", { name: "Delete standup" }));
+  fireEvent.click(screen.getByText("Delete"));
   expect(projects.remove).toHaveBeenCalledWith("a-1");
 });
 

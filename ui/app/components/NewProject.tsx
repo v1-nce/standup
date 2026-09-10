@@ -25,7 +25,7 @@ export function NewProject({ onCreate }: { onCreate: (name: string) => Promise<P
   if (!open) {
     return (
       <button
-        className="w-full border border-ink px-3 py-2 text-center font-mono text-xs transition-colors hover:bg-ink/5"
+        className="press w-full border border-ink bg-paper px-3 py-2 font-mono text-xs font-bold tracking-[0.08em] uppercase shadow-hard enabled:hover:bg-ink enabled:hover:text-paper"
         onClick={() => setOpen(true)}
       >
         + New project

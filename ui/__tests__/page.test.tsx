@@ -31,7 +31,11 @@ function server() {
   return fetched;
 }
 
-beforeEach(() => vi.stubGlobal("fetch", server()));
+beforeEach(() => {
+  vi.stubGlobal("fetch", server());
+  HTMLDialogElement.prototype.showModal = vi.fn();
+  HTMLDialogElement.prototype.close = vi.fn();
+});
 
 const composer = () => screen.getByLabelText("What do you need to present?");
 
@@ -119,11 +123,11 @@ test("deleting the active project falls back to another instead of dying on the 
     return Promise.resolve(Response.json({}));
   });
   vi.stubGlobal("fetch", fetched);
-  vi.stubGlobal("confirm", vi.fn(() => true));
 
   render(<Page />);
   fireEvent.click(await screen.findByRole("button", { name: "flask" }));
   fireEvent.click(screen.getByRole("button", { name: "Delete flask" }));
+  fireEvent.click(screen.getByText("Delete"));
 
   await waitFor(() => expect(screen.queryByRole("button", { name: "flask" })).toBeNull());
   expect(screen.getByRole("button", { name: "standup" })).toBeDefined();

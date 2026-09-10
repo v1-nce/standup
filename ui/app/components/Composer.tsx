@@ -11,7 +11,7 @@ export function Composer({
 }) {
   return (
     <form
-      className="flex shrink-0 items-center gap-3 border border-rule bg-surface p-3 transition-colors focus-within:border-ink"
+      className="flex shrink-0 items-end gap-4 border border-ink p-3"
       onSubmit={(event) => {
         event.preventDefault();
         const form = event.currentTarget;
@@ -23,7 +23,7 @@ export function Composer({
     >
       <textarea
         aria-label="What do you need to present?"
-        className="scroll-thin max-h-40 flex-1 resize-none bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted disabled:cursor-not-allowed"
+        className="scroll-thin max-h-40 min-h-11 flex-1 resize-none border-b border-ink bg-transparent text-sm leading-relaxed outline-none transition-colors placeholder:text-ink-faint focus:border-b-2 disabled:cursor-not-allowed disabled:opacity-40"
         disabled={disabled}
         name="request"
         onKeyDown={(event) => {
@@ -34,12 +34,7 @@ export function Composer({
         placeholder="Message Standup…"
         rows={2}
       />
-      <IconButton
-        className="h-11 w-11 bg-ink text-paper hover:bg-ink/80"
-        disabled={disabled}
-        label="Send"
-        type="submit"
-      >
+      <IconButton className="h-11 w-11" disabled={disabled} label="Send" type="submit" variant="ink">
         {UpPath}
       </IconButton>
     </form>

@@ -5,7 +5,7 @@ import { ClosePath, IconButton, TrashPath } from "@/app/components/IconButton";
 import { useProjectContext } from "@/app/hooks/useContext";
 
 const CONTROL =
-  "border border-ink px-3 py-1.5 font-mono text-xs transition-colors hover:bg-ink/5 disabled:pointer-events-none disabled:opacity-50";
+  "press border border-ink bg-paper px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-[0.08em] shadow-hard enabled:hover:bg-ink enabled:hover:text-paper disabled:pointer-events-none disabled:opacity-50";
 
 /** What a project may draw on. A folder is named by its path; a document is handed over whole,
  *  because a page is never told where a dropped file lives. */
@@ -25,23 +25,19 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
   return (
     <dialog
       ref={frame}
-      className="m-auto flex max-h-[85vh] w-[min(34rem,92vw)] flex-col border border-ink bg-paper p-0 text-ink backdrop:bg-ink/30"
+      className="m-auto flex max-h-[85vh] w-[min(36rem,92vw)] flex-col border border-ink bg-paper p-0 text-ink shadow-hard backdrop:bg-ink-faint"
       onClose={onClose}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-rule px-4 py-2">
+      <div className="flex shrink-0 items-center justify-between border-b border-ink px-4 py-3">
         <span className="label">Context</span>
-        <IconButton
-          className="h-8 w-8 text-muted hover:text-ink"
-          label="Close context"
-          onClick={onClose}
-        >
+        <IconButton className="h-8 w-8" label="Close context" onClick={onClose}>
           {ClosePath}
         </IconButton>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
         <form
-          className="flex shrink-0 gap-2"
+          className="flex shrink-0 items-end gap-3"
           onSubmit={(event) => {
             event.preventDefault();
             if (!path.trim()) return;
@@ -50,7 +46,7 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
           }}
         >
           <input
-            className="min-w-0 flex-1 border border-rule bg-transparent px-3 py-1.5 font-mono text-xs placeholder:text-muted focus:border-ink focus:outline-none disabled:opacity-50"
+            className="field min-w-0 flex-1 text-xs disabled:opacity-50"
             aria-label="Folder path"
             disabled={busy}
             placeholder="Add folder (path)"
@@ -65,7 +61,7 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
         <div
           aria-busy={busy}
           className={`flex shrink-0 flex-col items-center gap-3 border border-dashed p-6 transition-colors ${
-            over ? "border-ink bg-ink/5" : "border-rule"
+            over ? "border-ink bg-ink text-paper" : "border-ink-faint"
           }`}
           onDragLeave={() => setOver(false)}
           onDragOver={(event) => {
@@ -79,7 +75,9 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
             if (!busy) void addFiles(event.dataTransfer.files);
           }}
         >
-          <p className="text-sm text-muted">{busy ? "Indexing…" : "Drop documents here"}</p>
+          <p className={`text-sm ${over ? "text-paper" : "text-ink-soft"}`}>
+            {busy ? "Indexing…" : "Drop documents here"}
+          </p>
           <button className={CONTROL} disabled={busy} onClick={() => chooser.current?.click()}>
             Add file
           </button>
@@ -96,17 +94,17 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
           />
         </div>
 
-        {error && <p className="shrink-0 font-mono text-xs text-accent">{error}</p>}
+        {error && <p className="stamp-ink shrink-0 px-3 py-2 font-mono text-xs">{error}</p>}
 
         <ul className="scroll-thin min-h-0 flex-1 overflow-y-auto">
           {resources.map((resource) => (
-            <li key={resource.id} className="group flex items-center gap-2">
-              <span className="label shrink-0">{resource.kind}</span>
+            <li key={resource.id} className="group flex items-center gap-2 border-b border-ink-ghost py-2">
+              <span className="stamp shrink-0">{resource.kind}</span>
               <span className="min-w-0 flex-1 truncate font-mono text-sm" title={resource.location}>
                 {resource.name}
               </span>
               <IconButton
-                className="h-8 w-8 shrink-0 text-muted opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-accent"
+                className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                 disabled={busy}
                 label={`Remove ${resource.name}`}
                 onClick={() => void remove(resource.id)}
