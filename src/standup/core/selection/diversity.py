@@ -8,7 +8,7 @@ from standup.core.selection.signals import normalised
 
 # `ordered` normalises relevance to 0-1 before this is applied, since `relevance()`'s raw sum runs
 # 0-5.1 and would otherwise make the 1-LAMBDA term worth under 6% of the scale regardless of LAMBDA's
-# value - a real unit bug, fixed 2026-08-14 (docs/ISSUES.md S1).
+# value - a real unit bug, fixed 2026-08-14 (docs/LOG.md).
 #
 # LAMBDA itself was re-measured the same day against 3 real quality-benchmark cases (matplotlib,
 # twisted, puppet - see benchmarks/quality_cases/) once the scale was correct: 0.7 dropped average
@@ -16,7 +16,7 @@ from standup.core.selection.signals import normalised
 # concentrate in one directory, and pushing away from it is wrong exactly when that's true. 0.95
 # (diversity nearly off) matched the pre-fix behaviour's recall on all 3 cases, so this is the
 # measured value, not a guess reinstated. It should fall again once a better diversity signal exists
-# (tracked under S-next, docs/ISSUES.md) - directory proximity was never the right proxy for
+# (tracked in docs/LOG.md) - directory proximity was never the right proxy for
 # "redundant coverage," at any weight.
 LAMBDA = 0.95
 

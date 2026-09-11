@@ -90,7 +90,7 @@ standup/
 │
 ├── tests/                      pytest — 167 tests
 ├── benchmarks/                 measurement, one concern per target. Not built
-└── docs/                       SPECS · ARCHITECTURE · RESEARCH · UIUX
+└── docs/                       PRODUCT · SPECIFICATIONS · ARCHITECTURE · RESEARCH · UIUX · LOG
 ```
 
 ## 4. Quick Start
@@ -207,4 +207,4 @@ both from one.
 | `502` from any deck request | The key reached the provider and was rejected |
 | `curl` asks about "Script Execution Risk" | You typed `curl` instead of `curl.exe` |
 
-Full endpoint reference: [docs/API.md](docs/API.md). Design and rationale: [docs/](docs/).
+Full endpoint reference: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Design and rationale: [docs/](docs/).
