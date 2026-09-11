@@ -9,6 +9,7 @@ export function useConversation(projectId: string | null) {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(projectId !== null);
   const latest = useRef(0);
   const active = useRef(projectId);
   useEffect(() => {
@@ -32,10 +33,15 @@ export function useConversation(projectId: string | null) {
     setDeck(null);
     setError(null);
     setPending(false);
+    setLoading(projectId !== null);
   }
 
   useEffect(() => {
-    if (projectId) refresh(projectId).catch((failure) => setError(reason(failure)));
+    if (projectId) {
+      refresh(projectId)
+        .catch((failure) => setError(reason(failure)))
+        .finally(() => setLoading(false));
+    }
   }, [projectId, refresh]);
 
   const send = useCallback(
@@ -66,5 +72,5 @@ export function useConversation(projectId: string | null) {
     [projectId, refresh],
   );
 
-  return { messages, deck, pending, error, send };
+  return { messages, deck, pending, error, loading, send };
 }

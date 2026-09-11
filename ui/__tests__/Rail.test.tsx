@@ -8,6 +8,7 @@ function show(overrides: Partial<Projects> = {}, onSelect = vi.fn()) {
   const projects: Projects = {
     projects: [project("a-1", "standup"), project("b-2", "flask")],
     error: null,
+    loading: false,
     create: vi.fn(() => Promise.resolve(project("c-3", "flask"))),
     rename: vi.fn(() => Promise.resolve()),
     remove: vi.fn(() => Promise.resolve()),

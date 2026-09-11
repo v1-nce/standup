@@ -1,32 +1,23 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import type { Project } from "@/app/api/client";
+import { useInlineEdit } from "@/app/hooks/useInlineEdit";
 
 export function NewProject({ onCreate }: { onCreate: (name: string) => Promise<Project | null> }) {
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const cancelling = useRef(false);
-
-  const submit = (value: string) => {
-    const name = value.trim();
-    if (!name) return setOpen(false);
+  const { editing, fieldProps, open } = useInlineEdit((name) => {
     setBusy(true);
-    void onCreate(name)
-      .then((made) => setOpen(!made))
+    return onCreate(name)
+      .then((made) => made !== null)
       .finally(() => setBusy(false));
-  };
+  });
 
-  const cancel = () => {
-    cancelling.current = true;
-    setOpen(false);
-  };
-
-  if (!open) {
+  if (!editing) {
     return (
       <button
         className="press w-full border border-ink bg-paper px-3 py-2 font-mono text-xs font-bold tracking-[0.08em] uppercase shadow-hard enabled:hover:bg-ink enabled:hover:text-paper"
-        onClick={() => setOpen(true)}
+        onClick={open}
       >
         + New project
       </button>
@@ -41,17 +32,7 @@ export function NewProject({ onCreate }: { onCreate: (name: string) => Promise<P
       className="field"
       disabled={busy}
       placeholder="Project name"
-      onBlur={(event) => {
-        if (cancelling.current) {
-          cancelling.current = false;
-          return;
-        }
-        if (!busy) submit(event.currentTarget.value);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") submit(event.currentTarget.value);
-        if (event.key === "Escape") cancel();
-      }}
+      {...fieldProps}
     />
   );
 }

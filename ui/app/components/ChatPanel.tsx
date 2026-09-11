@@ -7,11 +7,13 @@ import { IconButton, PlusPath } from "@/app/components/IconButton";
 const WHO = { user: "you", assistant: "standup" } as const;
 
 export function ChatPanel({
+  loading = false,
   messages,
   onAddContext,
   pending,
   projectName = null,
 }: {
+  loading?: boolean;
   messages: ChatMessage[];
   onAddContext?: () => void;
   pending: boolean;
@@ -36,10 +38,10 @@ export function ChatPanel({
         <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-ink px-3">
           <span className="min-w-0 flex-1 truncate font-mono text-sm">{projectName}</span>
           <IconButton
-            className="h-8 w-8"
             disabled={!onAddContext}
             label="Add context"
             onClick={onAddContext}
+            size="sm"
           >
             {PlusPath}
           </IconButton>
@@ -50,7 +52,11 @@ export function ChatPanel({
         ref={transcript}
         className="scroll-thin flex flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4"
       >
-        {said.length === 0 && !pending && (
+        {loading && (
+          <p className="text-sm leading-relaxed text-ink-soft">Loading…</p>
+        )}
+
+        {!loading && said.length === 0 && !pending && (
           <p className="text-sm leading-relaxed text-ink-soft">
             Ask for a deck. Standup reads the repository and decides what belongs on it.
           </p>

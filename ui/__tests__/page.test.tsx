@@ -42,7 +42,7 @@ const composer = () => screen.getByLabelText("What do you need to present?");
 test("the shell composes a rail toggle, a conversation, a composer and a stage", async () => {
   render(<Page />);
 
-  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("STANDUP");
+  expect(screen.getByRole("img", { name: "Standup" })).toBeDefined();
   expect(screen.getByRole("button", { name: "Open projects" })).toBeDefined();
   expect(await screen.findByText("No deck yet")).toBeDefined();
 });

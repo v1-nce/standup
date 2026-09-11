@@ -10,7 +10,7 @@ const FACE_H = (FACE * 9) / 16;
 const THUMB = 96;
 const MAX_SCALE = 896 / FACE;
 
-export function Slides({ deck }: { deck: Deck | null }) {
+export function Slides({ deck, pending = false }: { deck: Deck | null; pending?: boolean }) {
   const slides = deck?.slides ?? [];
   const { active, onWheel, setActive, strip } = useSlideNavigation(slides.length);
   const showing = slides[active];
@@ -65,6 +65,18 @@ export function Slides({ deck }: { deck: Deck | null }) {
                 }
                 slide={showing}
               />
+            ) : pending ? (
+              <div className="flex h-full w-full flex-col justify-between p-6 sm:p-10">
+                <span className="stamp animate-pulse">Building…</span>
+                <div>
+                  <h2 className="font-sans text-3xl font-black tracking-tight uppercase text-balance sm:text-5xl">
+                    Building the deck
+                  </h2>
+                  <p className="mt-4 max-w-md font-mono text-sm leading-relaxed text-ink-soft">
+                    Standup is reading the repository and deciding what belongs on it.
+                  </p>
+                </div>
+              </div>
             ) : (
               <div className="flex h-full w-full flex-col justify-between p-6 sm:p-10">
                 <span className="stamp">No deck yet</span>

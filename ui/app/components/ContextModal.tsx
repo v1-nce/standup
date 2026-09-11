@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ClosePath, IconButton, TrashPath } from "@/app/components/IconButton";
+import { ErrorBanner } from "@/app/components/ErrorBanner";
 import { useProjectContext } from "@/app/hooks/useContext";
 
 const CONTROL =
@@ -30,7 +31,7 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
     >
       <div className="flex shrink-0 items-center justify-between border-b border-ink px-4 py-3">
         <span className="label">Context</span>
-        <IconButton className="h-8 w-8" label="Close context" onClick={onClose}>
+        <IconButton label="Close context" onClick={onClose} size="sm">
           {ClosePath}
         </IconButton>
       </div>
@@ -94,7 +95,7 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
           />
         </div>
 
-        {error && <p className="stamp-ink shrink-0 px-3 py-2 font-mono text-xs">{error}</p>}
+        {error && <ErrorBanner message={error} />}
 
         <ul className="scroll-thin min-h-0 flex-1 overflow-y-auto">
           {resources.map((resource) => (
@@ -104,10 +105,11 @@ export function ContextModal({ onClose, projectId }: { onClose: () => void; proj
                 {resource.name}
               </span>
               <IconButton
-                className="h-8 w-8 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                className="shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                 disabled={busy}
                 label={`Remove ${resource.name}`}
                 onClick={() => void remove(resource.id)}
+                size="sm"
               >
                 {TrashPath}
               </IconButton>

@@ -138,7 +138,7 @@ export function SlideFace({ label, slide, design }: { label: string; slide: Slid
 
   if (layout === "section") {
     return (
-      <Frame style={{ ...frame, backgroundColor: palette.accent, color: "white" }}>
+      <Frame style={{ ...frame, backgroundColor: palette.accent, color: palette.on_accent }}>
         <span className="absolute top-6 left-7 text-4xl font-bold opacity-80 sm:text-6xl">§</span>
         <div className="flex h-full flex-col justify-center px-[22%]">
           <h2 className="text-3xl leading-tight font-bold sm:text-5xl" style={heading}>{slide.title}</h2>

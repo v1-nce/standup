@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
 import type { Project } from "@/app/api/client";
 import { IconButton, PencilPath, TrashPath } from "@/app/components/IconButton";
+import { useInlineEdit } from "@/app/hooks/useInlineEdit";
 
-const ACTION = "h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100";
+const ACTION = "opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100";
 
 /** One project in the rail: pick it, rename it in place, or delete it. */
 export function ProjectRow({
@@ -20,19 +20,9 @@ export function ProjectRow({
   project: Project;
   selected: boolean;
 }) {
-  const [editing, setEditing] = useState(false);
-  const cancelling = useRef(false);
-
-  const commit = (value: string) => {
-    const name = value.trim();
-    if (name && name !== project.name) onRename(name);
-    setEditing(false);
-  };
-
-  const cancel = () => {
-    cancelling.current = true;
-    setEditing(false);
-  };
+  const { editing, fieldProps, open } = useInlineEdit((name) => {
+    if (name !== project.name) onRename(name);
+  });
 
   if (editing) {
     return (
@@ -41,17 +31,7 @@ export function ProjectRow({
         aria-label={`Rename ${project.name}`}
         className="field"
         defaultValue={project.name}
-        onBlur={(event) => {
-          if (cancelling.current) {
-            cancelling.current = false;
-            return;
-          }
-          commit(event.currentTarget.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") commit(event.currentTarget.value);
-          if (event.key === "Escape") cancel();
-        }}
+        {...fieldProps}
       />
     );
   }
@@ -80,7 +60,8 @@ export function ProjectRow({
       <IconButton
         className={ACTION}
         label={`Rename ${project.name}`}
-        onClick={() => setEditing(true)}
+        onClick={open}
+        size="sm"
       >
         {PencilPath}
       </IconButton>
@@ -88,6 +69,7 @@ export function ProjectRow({
         className={ACTION}
         label={`Delete ${project.name}`}
         onClick={onDelete}
+        size="sm"
       >
         {TrashPath}
       </IconButton>

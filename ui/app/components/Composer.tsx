@@ -34,7 +34,7 @@ export function Composer({
         placeholder="Message Standup…"
         rows={2}
       />
-      <IconButton className="h-11 w-11" disabled={disabled} label="Send" type="submit" variant="ink">
+      <IconButton disabled={disabled} label="Send" size="lg" type="submit" variant="ink">
         {UpPath}
       </IconButton>
     </form>

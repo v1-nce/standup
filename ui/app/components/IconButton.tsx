@@ -3,12 +3,21 @@ const SURFACES = {
   ink: "bg-ink text-paper enabled:hover:bg-paper enabled:hover:text-ink",
 } as const;
 
+// The one icon-button size scale. Pick one of these instead of a hand-picked
+// h-*/w-* pair, so every icon button in the app stays on the same three sizes.
+const SIZES = {
+  sm: "h-8 w-8",
+  md: "h-10 w-10",
+  lg: "h-14 w-14",
+} as const;
+
 export function IconButton({
   children,
-  className = "h-11 w-11",
+  className = "",
   disabled = false,
   label,
   onClick,
+  size = "md",
   type = "button",
   variant = "paper",
 }: {
@@ -17,13 +26,14 @@ export function IconButton({
   disabled?: boolean;
   label: string;
   onClick?: () => void;
+  size?: keyof typeof SIZES;
   type?: "button" | "submit";
   variant?: keyof typeof SURFACES;
 }) {
   return (
     <button
       aria-label={label}
-      className={`press grid shrink-0 place-items-center border border-ink shadow-hard disabled:cursor-not-allowed disabled:opacity-40 ${SURFACES[variant]} ${className}`}
+      className={`press grid shrink-0 place-items-center border border-ink shadow-hard disabled:cursor-not-allowed disabled:opacity-40 ${SURFACES[variant]} ${SIZES[size]} ${className}`}
       disabled={disabled}
       onClick={onClick}
       type={type}
