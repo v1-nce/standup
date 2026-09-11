@@ -103,7 +103,9 @@ async def test_system_and_max_tokens_passed_through():
     client = make_client()
     fake = attach(client, types.SimpleNamespace(content=[text_block("ok")], usage=usage()))
     await client.text("hi", system="s", max_tokens=7)
-    assert fake.calls[0]["system"] == "s"
+    assert fake.calls[0]["system"] == [
+        {"type": "text", "text": "s", "cache_control": {"type": "ephemeral"}}
+    ]
     assert fake.calls[0]["max_tokens"] == 7
 
 

@@ -133,5 +133,9 @@ class LLMClient:
             "messages": [{"role": "user", "content": content}],
         }
         if system:
-            request["system"] = system
+            # The system prompt is re-sent every round unchanged; mark it ephemeral so the
+            # provider serves the later rounds from cache instead of re-reading it each time.
+            request["system"] = [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            ]
         return request

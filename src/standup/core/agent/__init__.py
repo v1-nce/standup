@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel
 
 from standup.core import pipeline
-from standup.core.agent.commands import Command, Write, apply, echo
+from standup.core.agent.commands import Command, Style, Update, Write, apply, echo
 from standup.core.llm import ModelClient
 from standup.core.models import (
     ChatMessage,
@@ -377,6 +377,7 @@ def _prompt(
     last: bool,
     may_command: bool = False,
     notes: str = "",
+    review: bool = False,
 ) -> str:
     """Stable first, volatile last, so a cached prefix stays a prefix when caching lands."""
     try:
@@ -416,14 +417,18 @@ def _prompt(
     if results:
         blocks.append("RESULTS THIS TURN\n" + "\n".join(results))
     if last:
-        blocks.append(
-            (
+        if review:
+            blocks.append(
+                "VISUAL REVIEW ROUND\nA visual review just ran. If it flagged anything worth "
+                "fixing, run one update, write, or style command now; otherwise answer."
+            )
+        elif may_command:
+            blocks.append(
                 "FINAL OPERATIONAL ROUND\nThe deck is incomplete. Exactly one command can still run. "
                 "Run it now if it can finish the deck; otherwise answer honestly."
             )
-            if may_command
-            else "LAST ROUND\nNo further commands will be run. Answer now with what stands."
-        )
+        else:
+            blocks.append("LAST ROUND\nNo further commands will be run. Answer now with what stands.")
     return "\n\n".join(blocks)
 
 
@@ -460,10 +465,11 @@ async def converse(
     change_expected = False
     stalled = False
     reviewed = False
+    review_pending = False
 
-    async def ask(*, last: bool, may_command: bool, notes: str) -> Turn:
+    async def ask(*, last: bool, may_command: bool, notes: str, review: bool = False) -> Turn:
         prompt = await asyncio.to_thread(
-            _prompt, store, project_id, index, history, results, when, last=last, may_command=may_command, notes=notes
+            _prompt, store, project_id, index, history, results, when, last=last, may_command=may_command, notes=notes, review=review
         )
         return await client.structured(prompt, Turn, system=SYSTEM)
 
@@ -482,12 +488,17 @@ async def converse(
         blocker = _deck_blocker(current) if changed else None
         complete = changed and blocker is None
         final_operation = not complete and round_number == MAX_ROUNDS - 1
+        review = complete and review_pending
         last = complete or final_operation
-        turn = await ask(last=last, may_command=final_operation, notes=notes)
+        turn = await ask(last=last, may_command=final_operation or review, notes=notes, review=review)
         notes = turn.notes
         change_expected = change_expected or turn.changes_deck or bool(turn.commands)
 
-        if last and not final_operation:
+        if review and not turn.commands:
+            # The deck is complete; the model chose to answer rather than act on the critique.
+            return turn.reply or _DONE
+
+        if last and not final_operation and not review:
             if complete:
                 return turn.reply or _DONE
             if change_expected:
@@ -505,6 +516,8 @@ async def converse(
             stalled = True
             results.append(_blocker_note(blocker or _NOTHING_RAN))
             continue
+
+        review_pending = False  # the review shot is consumed by any command attempt
 
         if len(turn.commands) != 1:
             if final_operation:
@@ -528,10 +541,18 @@ async def converse(
 
         current = await deck()
         blocker = _deck_blocker(current) if changed else None
-        if changed and blocker is None and not reviewed:
+        # Only content changes are worth rendering and looking at. A reorder or re-selection
+        # (`keep`/`select`) changes no pixels, so paying for an image review after one is waste.
+        if (
+            changed
+            and blocker is None
+            and not reviewed
+            and isinstance(command, (Write, Update, Style))
+        ):
             critique = await _visual_review(client, current)
             if critique:
                 results.append("VISUAL REVIEW\n" + critique)
+                review_pending = True
             reviewed = True
         if blocker == _NO_MATCHES:
             return _blocked_reply(blocker)

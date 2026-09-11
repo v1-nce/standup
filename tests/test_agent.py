@@ -418,6 +418,42 @@ async def test_a_complete_deck_is_reviewed_visually(store, project, index):
     assert "VISUAL REVIEW" in client.prompts[-1]
 
 
+async def test_a_visual_review_round_can_fix_the_deck(store, project, index):
+    scope = Scope(slide_budget=1)
+    chosen = pipeline.select(store, project.id, index, "peek", scope).selection.chosen[0]
+    (store.paths(project.id).deck / pipeline.SELECTION_FILE).unlink()
+
+    client = StubClient(
+        Turn(
+            reply="",
+            changes_deck=True,
+            commands=[Select(action="select", request="standup", scope=scope)],
+        ),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=[chosen.candidate.id])]),
+        Turn(
+            reply="",
+            changes_deck=True,
+            commands=[
+                Write(
+                    action="write",
+                    slides=[paint(Slide(candidate_id=chosen.candidate.id, title="Router", bullets=["a"]))],
+                )
+            ],
+        ),
+        Turn(
+            reply="",
+            changes_deck=True,
+            commands=[Update(action="update", slide_id=chosen.candidate.id, title="Router, fixed")],
+        ),
+        Turn(reply="Done, fixed."),
+    )
+
+    assert await talk(client, store, project.id, "standup tomorrow") == "Done, fixed."
+    assert client.described == ["image/png"]
+    assert "VISUAL REVIEW ROUND" in client.prompts[-2]
+    assert pipeline.read(store, project.id).slides[0].title == "Router, fixed"
+
+
 async def test_working_notes_carry_to_the_next_round(store, project, index):
     scope = Scope(slide_budget=1)
     chosen = pipeline.select(store, project.id, index, "peek", scope).selection.chosen[0]
