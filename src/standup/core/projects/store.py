@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from standup.core._json import atomic_write, load_json
 from standup.core.index import forget
-from standup.core.index.docs import read, readable
+from standup.core.index.docs import is_image, read, readable
 from standup.core.models import Project, ProjectPaths, Resource, ResourceKind
 from standup.errors import InvalidInput, NotFound, StandupError
 
@@ -136,7 +136,7 @@ class ProjectStore:
             raise _unreadable("saved", name, failure) from failure
 
         try:
-            if not read(kept).strip():
+            if not is_image(name) and not read(kept).strip():
                 raise InvalidInput(f"{name} has no readable text in it")
         except StandupError:
             shutil.rmtree(home, ignore_errors=True)

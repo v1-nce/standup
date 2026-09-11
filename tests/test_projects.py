@@ -2,9 +2,10 @@ from pathlib import Path
 
 import pytest
 
+from standup.core.index import docs
 from standup.core.projects import ChatLog, ProjectStore
-from standup.errors import InvalidInput, NotFound
-from tests.conftest import pdf_saying
+from standup.errors import InvalidInput, NotConfigured, NotFound
+from tests.conftest import TINY_PNG, pdf_saying
 
 
 @pytest.fixture
@@ -163,6 +164,22 @@ def test_a_document_with_no_readable_text_is_refused_and_leaves_no_copy(store):
 
     assert store.get(project.id).resources == []
     assert not any(store.paths(project.id).context.iterdir())
+
+
+def test_attaching_an_image_without_a_model_is_kept(store, monkeypatch):
+    """An image is a resource even when no model can describe it; only an unreadable file fails."""
+    monkeypatch.setattr(docs, "_DESCRIBED", {})
+
+    def unconfigured(data, media_type, *, prompt):
+        raise NotConfigured("no key")
+
+    monkeypatch.setattr(docs, "describe_image_sync", unconfigured)
+    project = store.create("Images")
+
+    resource = store.attach_file(project.id, "photo.png", TINY_PNG)
+
+    assert resource.kind == "file"
+    assert store.get(project.id).resources == [resource]
 
 
 def test_detaching_takes_the_copy_and_the_derived_facts_with_it(store):

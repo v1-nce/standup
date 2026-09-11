@@ -431,7 +431,8 @@ def test_describing_the_same_image_twice_calls_the_model_once(tmp_path, monkeypa
     assert len(calls) == 1
 
 
-def test_an_image_with_no_model_configured_fails_honestly(tmp_path, monkeypatch):
+def test_an_image_with_no_model_configured_is_read_without_text(tmp_path, monkeypatch):
+    """No model (or a model that cannot see images) leaves the image undescribed, not unreadable."""
     monkeypatch.setattr(docs, "_DESCRIBED", {})
 
     def unconfigured(data, media_type, *, prompt):
@@ -441,8 +442,23 @@ def test_an_image_with_no_model_configured_fails_honestly(tmp_path, monkeypatch)
     photo = tmp_path / "photo.png"
     photo.write_bytes(TINY_PNG)
 
-    with pytest.raises(NotConfigured, match="ANTHROPIC_API_KEY"):
-        read(photo)
+    assert read(photo) == ""
+
+
+def test_a_lone_image_with_no_description_is_still_indexed(tmp_path, monkeypatch):
+    """A lone image whose description failed is a valid resource, not a 'no readable text' failure."""
+    monkeypatch.setattr(docs, "_DESCRIBED", {})
+
+    def unconfigured(data, media_type, *, prompt):
+        raise NotConfigured("no key")
+
+    monkeypatch.setattr(docs, "describe_image_sync", unconfigured)
+    photo = tmp_path / "photo.png"
+    photo.write_bytes(TINY_PNG)
+
+    facts = index.build(photo)
+    assert [f.path for f in facts.files] == ["photo.png"]
+    assert facts.text == ""
 
 
 def test_ensure_reuses_the_stored_facts_until_the_resource_changes(repo, tmp_path):

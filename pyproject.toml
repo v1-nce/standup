@@ -14,6 +14,7 @@ dependencies = [
     # Pinned: 1.14.1 ships no pre-built parsers for windows-x86_64 and fails at parse time.
     # Unpin once a release restores them, or once Windows stops being a target.
     "tree-sitter-language-pack==1.14.0",
+    "pillow>=10.0",
     "python-pptx>=1.0",
     "pypdf>=5.1",
     "openpyxl>=3.1",

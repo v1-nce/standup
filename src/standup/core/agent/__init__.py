@@ -21,7 +21,7 @@ from standup.core.models import (
 from standup.core.present import evidence, order_fault
 from standup.core.present.preview import contact_sheet
 from standup.core.projects import ChatLog, ProjectStore
-from standup.errors import NotFound
+from standup.errors import NotFound, StandupError
 
 # A director build is select (scope + shortlist) -> keep (cut) -> write -> answer, four calls on the
 # happy path. One round above that is the recovery budget: a rejected command (a batched keep+write,
@@ -286,20 +286,24 @@ def _write_blocker(current: Deck | None, command: Command) -> str | None:
 
 async def _visual_review(client: ModelClient, deck: Deck | None) -> str:
     """Render the deck and ask the model to critique its own work — the eyes-and-ears step. Skipped
-    for clients that cannot see images."""
+    for clients that cannot see images, and on any render or vision failure: a review is a bonus,
+    never a reason to fail the turn."""
     describe = getattr(client, "describe_image", None)
     if describe is None or not deck or not deck.slides:
         return ""
     plan = SlidePlan(design=deck.design, slides=deck.slides)
-    png = await asyncio.to_thread(contact_sheet, plan)
-    return await describe(
-        png,
-        "image/png",
-        prompt=(
-            "This is the current slide deck. In 2-3 sentences, critique its visual quality: "
-            "hierarchy, readability, density, and anything that looks unfinished or off."
-        ),
-    )
+    try:
+        png = await asyncio.to_thread(contact_sheet, plan)
+        return await describe(
+            png,
+            "image/png",
+            prompt=(
+                "This is the current slide deck. In 2-3 sentences, critique its visual quality: "
+                "hierarchy, readability, density, and anything that looks unfinished or off."
+            ),
+        )
+    except StandupError:
+        return ""
 
 
 def _indexed_excerpts(index: Index | None, history: list[ChatMessage]) -> str:

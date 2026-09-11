@@ -11,7 +11,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from standup.core.index.code import parse, relative, walk
-from standup.core.index.docs import MAX_DOC_CHARS, emphasis, prose, read
+from standup.core.index.docs import MAX_DOC_CHARS, emphasis, is_image, prose, read
 from standup.core.index.graph import aliases, rank
 from standup.core.index.history import commits
 from standup.core.models import Commit, Facts, FileFacts, Index
@@ -58,7 +58,7 @@ def build(root: Path) -> Facts:
 def _document(path: Path) -> Facts:
     """A lone file has no history and no imports, so its text is the only evidence there is."""
     text = read(path)
-    if not text.strip():
+    if not text.strip() and not is_image(path.name):
         raise InvalidInput(f"{path.name} has no readable text")
 
     parsed = parse(path)

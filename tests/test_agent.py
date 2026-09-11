@@ -20,7 +20,7 @@ from standup.core.models import (
     VisualElement,
 )
 from standup.core.projects import ChatLog
-from standup.errors import NotFound
+from standup.errors import NotFound, Upstream
 
 TODAY = datetime(2026, 8, 3, tzinfo=UTC)
 
@@ -416,6 +416,38 @@ async def test_a_complete_deck_is_reviewed_visually(store, project, index):
     await talk(client, store, project.id, "standup tomorrow")
     assert client.described == ["image/png"]
     assert "VISUAL REVIEW" in client.prompts[-1]
+
+
+async def test_a_failing_visual_review_does_not_fail_the_turn(store, project, index, monkeypatch):
+    """A text-only model (or any vision failure) must not sink a deck it already wrote: the
+    review is a bonus, so its failure is skipped, not raised."""
+    scope = Scope(slide_budget=1)
+    chosen = pipeline.select(store, project.id, index, "peek", scope).selection.chosen[0]
+    (store.paths(project.id).deck / pipeline.SELECTION_FILE).unlink()
+
+    client = StubClient(
+        Turn(reply="", changes_deck=True, commands=[Select(action="select", request="standup", scope=scope)]),
+        Turn(reply="", changes_deck=True, commands=[Keep(action="keep", ids=[chosen.candidate.id])]),
+        Turn(
+            reply="",
+            changes_deck=True,
+            commands=[
+                Write(
+                    action="write",
+                    slides=[paint(Slide(candidate_id=chosen.candidate.id, title="Router", bullets=["a"]))],
+                )
+            ],
+        ),
+        Turn(reply="Done."),
+    )
+
+    async def cannot_see(data, media_type, *, prompt, max_tokens=None):
+        raise Upstream("this model cannot see images")
+
+    monkeypatch.setattr(client, "describe_image", cannot_see)
+
+    assert await talk(client, store, project.id, "standup tomorrow") == "Done."
+    assert pipeline.read(store, project.id).slides[0].title == "Router"
 
 
 async def test_a_visual_review_round_can_fix_the_deck(store, project, index):

@@ -20,7 +20,7 @@ from pypdf.errors import PyPdfError
 from standup.core.index.code import walk
 from standup.core.llm import describe_image_sync
 from standup.core.models import FileFacts
-from standup.errors import InvalidInput
+from standup.errors import InvalidInput, StandupError
 
 DOC_SUFFIXES = {".md", ".rst", ".txt", ".adoc"}
 PDF_SUFFIX = ".pdf"
@@ -49,6 +49,12 @@ def readable(name: str) -> bool:
     """Whether a file attached on its own can be turned into text. Checked before it is kept."""
     suffix = Path(name).suffix.lower()
     return suffix in ATTACHABLE or tsl.detect_language_from_path(name) is not None
+
+
+def is_image(name: str) -> bool:
+    """An image is a valid resource even when nothing can describe it, so its empty text is not
+    'nothing here' the way an empty document's is."""
+    return Path(name).suffix.lower() in IMAGE_MEDIA_TYPES
 
 
 def read(path: Path) -> str:
@@ -124,7 +130,13 @@ def _image(path: Path, suffix: str) -> str:
     if digest not in _DESCRIBED:
         if len(_DESCRIBED) >= _DESCRIBED_MAX:
             _DESCRIBED.pop(next(iter(_DESCRIBED)))
-        _DESCRIBED[digest] = describe_image_sync(data, IMAGE_MEDIA_TYPES[suffix], prompt=IMAGE_PROMPT)
+        try:
+            described = describe_image_sync(data, IMAGE_MEDIA_TYPES[suffix], prompt=IMAGE_PROMPT)
+        except StandupError:
+            # A description is evidence, not a prerequisite: with no model (or one that cannot see
+            # images) the image stays attachable and indexable, just without text.
+            described = ""
+        _DESCRIBED[digest] = described
     return _DESCRIBED[digest]
 
 
