@@ -14,7 +14,7 @@ from standup.errors import StandupError
 
 WEB = Path(__file__).resolve().parents[1] / "web"
 
-app = FastAPI(title="Standup", version="0.2.0")
+app = FastAPI(title="Standup", version="0.2.1")
 
 app.add_middleware(
     CORSMiddleware,

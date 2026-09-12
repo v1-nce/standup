@@ -1,6 +1,6 @@
 [project]
 name = "standup"
-version = "0.2.0"
+version = "0.2.1"
 description = "Whatever you need to present, as a slide deck."
 requires-python = ">=3.12"
 dependencies = [
