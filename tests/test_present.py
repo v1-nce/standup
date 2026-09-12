@@ -1,3 +1,5 @@
+import struct
+import zlib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -468,3 +470,28 @@ def test_an_image_slide_with_no_resolved_path_fails_honestly(tmp_path):
     )
     with pytest.raises(InvalidInput, match="gone.png"):
         build(plan, tmp_path / "deck.pptx", images={})
+
+
+def test_a_decompression_bomb_image_fails_honestly_not_with_a_raw_pillow_error(tmp_path):
+    # A PNG header can declare dimensions Pillow refuses to decode without any real pixel
+    # data - Image.open() raises DecompressionBombError on the header alone. That error
+    # doesn't subclass OSError/ValueError, so it must be caught explicitly or it surfaces
+    # as an unhandled exception instead of the same InvalidInput every other bad-image
+    # path raises.
+    def png_chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    huge_header = struct.pack(">IIBBBBB", 50_000, 50_000, 8, 6, 0, 0, 0)
+    bomb = (
+        bytes([137, 80, 78, 71, 13, 10, 26, 10])
+        + png_chunk(b"IHDR", huge_header)
+        + png_chunk(b"IEND", b"")
+    )
+    photo = tmp_path / "bomb.png"
+    photo.write_bytes(bomb)
+
+    plan = SlidePlan(
+        slides=[Slide(candidate_id="conclusion", free=True, title="Conclusion", image="doc/bomb.png")]
+    )
+    with pytest.raises(InvalidInput, match="bomb.png"):
+        build(plan, tmp_path / "deck.pptx", images={"doc/bomb.png": photo})

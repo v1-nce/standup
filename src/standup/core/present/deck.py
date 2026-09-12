@@ -176,7 +176,7 @@ def _picture(slide, path: Path, x: float, y: float, width: float, height: float)
     try:
         with Image.open(path) as image:
             image_width, image_height = image.size
-    except (OSError, ValueError) as failure:
+    except (OSError, ValueError, Image.DecompressionBombError) as failure:
         raise InvalidInput(f"Image {path.name!r} could not be rendered: {failure}") from failure
     image_ratio = image_width / image_height
     box_ratio = width / height
