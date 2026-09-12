@@ -14,13 +14,13 @@ $wheel = Join-Path $env:TEMP ("standup-" + [guid]::NewGuid() + ".whl")
 Write-Host "Downloading $($asset.browser_download_url)"
 Invoke-WebRequest $asset.browser_download_url -OutFile $wheel
 
+Write-Host "Installing Standup..."
 if (Get-Command uv -ErrorAction SilentlyContinue) {
     uv tool install $wheel
 } elseif (Get-Command python -ErrorAction SilentlyContinue) {
     python -m pip install --user $wheel
-    Write-Host "If 'standup' isn't found, add %APPDATA%\Python\Scripts to your PATH."
 } else {
-    Write-Error "Need Python 3.12+ or uv."
+    Write-Error "Need Python 3.12+ to install Standup."
     exit 1
 }
 
@@ -29,3 +29,4 @@ Remove-Item $wheel
 Write-Host ""
 Write-Host "Standup is installed. Run it with:"
 Write-Host "  standup"
+Write-Host "If 'standup' isn't found, restart your terminal."
