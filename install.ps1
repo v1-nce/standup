@@ -10,7 +10,9 @@ if (-not $asset) {
     exit 1
 }
 
-$wheel = Join-Path $env:TEMP ("standup-" + [guid]::NewGuid() + ".whl")
+$tempDir = Join-Path $env:TEMP ([guid]::NewGuid())
+New-Item -ItemType Directory -Path $tempDir | Out-Null
+$wheel = Join-Path $tempDir $asset.name
 Write-Host "Downloading $($asset.browser_download_url)"
 Invoke-WebRequest $asset.browser_download_url -OutFile $wheel
 
@@ -23,8 +25,12 @@ if (Get-Command uv -ErrorAction SilentlyContinue) {
     Write-Error "Need Python 3.12+ to install Standup."
     exit 1
 }
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Installation failed."
+    exit 1
+}
 
-Remove-Item $wheel
+Remove-Item -Recurse -Force $tempDir
 
 Write-Host ""
 Write-Host "Standup is installed. Run it with:"

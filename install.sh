@@ -16,14 +16,17 @@ fi
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
 
+wheel_name=$(basename "$wheel_url")
+wheel="$tmpdir/$wheel_name"
+
 echo "Downloading $wheel_url"
-curl -fsSL "$wheel_url" -o "$tmpdir/standup.whl"
+curl -fsSL "$wheel_url" -o "$wheel"
 
 echo "Installing Standup..."
 if command -v uv >/dev/null 2>&1; then
-    uv tool install "$tmpdir/standup.whl"
+    uv tool install "$wheel"
 elif command -v python3 >/dev/null 2>&1; then
-    python3 -m pip install --user "$tmpdir/standup.whl"
+    python3 -m pip install --user "$wheel"
 else
     echo "Need Python 3.12+ to install Standup." >&2
     exit 1

@@ -32,4 +32,7 @@ def main() -> None:
         # Opens browser tab for GUI
         threading.Timer(1.0, webbrowser.open, [address]).start()
 
-    uvicorn.run("standup.api.app:app", host="127.0.0.1", port=options.port)
+    try:
+        uvicorn.run("standup.api.app:app", host="127.0.0.1", port=options.port)
+    except KeyboardInterrupt:
+        print("\nStandup stopped.")
