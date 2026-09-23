@@ -38,6 +38,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/model/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Model Key
+         * @description Save a pasted key to the user's .env and apply it, so first-run setup never opens a file.
+         */
+        post: operations["set_model_key_model_key_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/model/check": {
         parameters: {
             query?: never;
@@ -370,6 +390,11 @@ export interface components {
             /** Reply */
             reply: string;
         };
+        /** ModelKey */
+        ModelKey: {
+            /** Api Key */
+            api_key: string;
+        };
         /** ModelStatus */
         ModelStatus: {
             /** Provider */
@@ -380,6 +405,8 @@ export interface components {
             configured: boolean;
             /** Via Gateway */
             via_gateway: boolean;
+            /** Models */
+            models: string[];
         };
         /** Project */
         Project: {
@@ -683,6 +710,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelStatus"];
+                };
+            };
+        };
+    };
+    set_model_key_model_key_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelKey"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
