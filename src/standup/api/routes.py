@@ -3,10 +3,10 @@ from functools import lru_cache
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from standup.config import settings
+from standup.config import provider_from_key, save_model_api_key, settings
 from standup.core import llm
 from standup.core.llm import ModelClient
-from standup.core.models import Health, ModelCheck, ModelStatus
+from standup.core.models import Health, ModelCheck, ModelKey, ModelStatus
 from standup.errors import Busy, InvalidInput, NotConfigured, NotFound, Upstream
 
 router = APIRouter()
@@ -36,8 +36,25 @@ def model_status() -> ModelStatus:
         provider=provider if provider in llm.PROVIDERS else None,
         model=llm.active_model() or "",
         configured=provider in llm.PROVIDERS,
-        via_gateway=settings.llm_base_url is not None,
+        via_gateway=bool(settings.model_base_url or settings.llm_base_url),
+        models=llm.MODEL_CATALOG.get(provider, []),
     )
+
+
+@router.post("/model/key")
+def set_model_key(body: ModelKey) -> ModelStatus:
+    """Save a pasted key to the user's .env and apply it, so first-run setup never opens a file."""
+    key = body.api_key.strip()
+    if not key:
+        raise InvalidInput("Paste a model API key.")
+    if provider_from_key(key) is None:
+        raise InvalidInput(
+            "Could not detect the provider from that key. Use an Anthropic (sk-ant-...), "
+            "Gemini (AIza...), or OpenAI (sk-...) key."
+        )
+    save_model_api_key(key)
+    get_client.cache_clear()
+    return model_status()
 
 
 @router.post("/model/check")

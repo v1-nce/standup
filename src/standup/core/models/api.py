@@ -12,6 +12,11 @@ class ModelStatus(BaseModel):
     model: str
     configured: bool
     via_gateway: bool
+    models: list[str]
+
+
+class ModelKey(BaseModel):
+    api_key: str
 
 
 class ModelCheck(BaseModel):

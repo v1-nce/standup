@@ -2,6 +2,7 @@ from standup.core.models.api import (
     Deck,
     Health,
     ModelCheck,
+    ModelKey,
     ModelStatus,
     SelectionEdit,
 )
@@ -52,6 +53,7 @@ __all__ = [
     "Memory",
     "MemoryEntry",
     "ModelCheck",
+    "ModelKey",
     "ModelStatus",
     "Project",
     "ProjectCreate",

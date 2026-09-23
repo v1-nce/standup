@@ -170,8 +170,10 @@ def test_sending_a_message_without_a_model_is_refused_before_it_is_logged(
     client, monkeypatch
 ):
     monkeypatch.setattr(settings, "llm_provider", "")
+    monkeypatch.setattr(settings, "model_api_key", "")
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     monkeypatch.setattr(settings, "gemini_api_key", "")
+    monkeypatch.setattr(settings, "openai_api_key", "")
     routes.get_client.cache_clear()
 
     project_id = client.post("/projects", json={"name": "Quiet"}).json()["id"]
