@@ -36,13 +36,14 @@ def reason(error: httpx.HTTPError) -> str:
 
 
 class JSONHTTPClient:
-    """Base for a provider reached over a JSON HTTP API. Subclasses declare ``provider``,
-    ``default_model`` and ``key_attr`` and implement ``_image_parts`` and ``_generate``; transport,
-    retry, and JSON validation live here."""
+    """Base for a provider reached over a JSON HTTP API. Subclasses declare ``provider``, ``key``,
+    ``default_model`` and ``default_base_url`` and implement ``_image_parts`` and ``_generate``;
+    transport, retry, and JSON validation live here."""
 
     provider: ClassVar[str] = ""
     default_model: ClassVar[str] = ""
-    key_attr: ClassVar[str] = ""
+    key: ClassVar[str] = ""
+    default_base_url: ClassVar[str] = ""
 
     def __init__(
         self,
@@ -67,17 +68,17 @@ class JSONHTTPClient:
 
     @classmethod
     def configured(cls) -> bool:
-        return bool(getattr(settings, cls.key_attr))
+        return bool(settings.api_key_for(cls.key))
 
     @classmethod
     def from_settings(cls) -> Self:
         return cls(
-            api_key=getattr(settings, cls.key_attr),
-            model=settings.llm_model or cls.default_model,
+            api_key=settings.api_key_for(cls.key),
+            model=settings.model_for(cls.default_model),
             max_tokens=settings.llm_max_tokens,
             max_concurrency=settings.llm_max_concurrency,
             timeout=settings.llm_timeout_seconds,
-            base_url=settings.llm_base_url,
+            base_url=settings.base_url_for(cls.default_base_url),
         )
 
     async def aclose(self) -> None:

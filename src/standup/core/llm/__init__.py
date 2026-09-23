@@ -5,7 +5,7 @@ from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
 
-from standup.config import settings
+from standup.config import MODEL_CATALOG, canonical_model, provider_from_key, settings
 from standup.core.llm.anthropic_client import LLMClient
 from standup.core.llm.gemini_client import GeminiClient
 from standup.core.llm.openai_client import OpenAIClient
@@ -46,23 +46,30 @@ def active_provider() -> str | None:
     """The provider that would be used, or None if nothing is configured."""
     if settings.llm_provider:
         return settings.llm_provider
+    if settings.model_api_key:
+        return provider_from_key(settings.model_api_key)
     return next((name for name, kind in PROVIDERS.items() if kind.configured()), None)
 
 
 def active_model() -> str | None:
-    """The model that would be called, resolved from ``LLM_MODEL`` or the provider's default."""
+    """The model that would be called, resolved from MODEL_NAME/LLM_MODEL or the provider's default."""
     chosen = active_provider()
     if chosen is None or chosen not in PROVIDERS:
         return None
-    return settings.llm_model or PROVIDERS[chosen].default_model
+    return settings.model_for(PROVIDERS[chosen].default_model)
 
 
 def from_settings() -> ModelClient:
     """Configuration decides the provider, never a failed request. Failover would hide a fault."""
     chosen = active_provider()
     if chosen is None:
+        if settings.model_api_key:
+            raise NotConfigured(
+                "Could not detect a provider from MODEL_API_KEY. Use an Anthropic (sk-ant-...), "
+                "Gemini (AIza...), or OpenAI (sk-...) key, or set LLM_PROVIDER explicitly."
+            )
         raise NotConfigured(
-            "No model key. Set ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY in .env"
+            "No model key. Set MODEL_API_KEY in .env (an Anthropic, Gemini, or OpenAI key)."
         )
     if chosen not in PROVIDERS:
         raise NotConfigured(f"LLM_PROVIDER must be one of {sorted(PROVIDERS)}, not {chosen!r}")
@@ -84,6 +91,7 @@ def describe_image_sync(data: bytes, media_type: str, *, prompt: str) -> str:
 
 
 __all__ = [
+    "MODEL_CATALOG",
     "PROVIDERS",
     "GeminiClient",
     "LLMClient",
@@ -91,6 +99,7 @@ __all__ = [
     "OpenAIClient",
     "active_model",
     "active_provider",
+    "canonical_model",
     "describe_image_sync",
     "from_settings",
 ]

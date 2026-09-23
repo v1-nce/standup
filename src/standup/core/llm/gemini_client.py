@@ -26,8 +26,9 @@ class GeminiClient(JSONHTTPClient):
     """The Gemini half of the model seam."""
 
     provider = "Gemini"
+    key = "gemini"
     default_model = "gemini-flash-lite-latest"
-    key_attr = "gemini_api_key"
+    default_base_url = BASE_URL
 
     def __init__(
         self,
@@ -41,7 +42,7 @@ class GeminiClient(JSONHTTPClient):
     ) -> None:
         super().__init__(
             api_key=api_key,
-            key_env="GEMINI_API_KEY",
+            key_env="MODEL_API_KEY",
             model=model,
             max_tokens=max_tokens,
             max_concurrency=max_concurrency,

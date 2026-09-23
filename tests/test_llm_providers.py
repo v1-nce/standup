@@ -26,6 +26,9 @@ class Shape(BaseModel):
 @pytest.fixture
 def unconfigured(monkeypatch):
     monkeypatch.setattr(llm.settings, "llm_provider", "")
+    monkeypatch.setattr(llm.settings, "model_api_key", "")
+    monkeypatch.setattr(llm.settings, "model_name", "")
+    monkeypatch.setattr(llm.settings, "model_base_url", None)
     monkeypatch.setattr(llm.settings, "anthropic_api_key", "")
     monkeypatch.setattr(llm.settings, "gemini_api_key", "")
     monkeypatch.setattr(llm.settings, "openai_api_key", "")
@@ -52,7 +55,7 @@ def spoke(text: str, finish: str = "STOP") -> httpx.Response:
 
 def test_nothing_configured_names_every_key(unconfigured):
     assert llm.active_provider() is None
-    with pytest.raises(NotConfigured, match="ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY"):
+    with pytest.raises(NotConfigured, match="MODEL_API_KEY"):
         llm.from_settings()
 
 
@@ -72,6 +75,38 @@ def test_an_openai_key_alone_selects_openai(unconfigured, monkeypatch):
     monkeypatch.setattr(llm.settings, "openai_api_key", "k")
     assert llm.active_provider() == "openai"
     assert isinstance(llm.from_settings(), OpenAIClient)
+
+
+def test_a_model_api_key_selects_the_provider_by_its_shape(unconfigured, monkeypatch):
+    for key, expected in [("sk-ant-api03-x", "anthropic"), ("AIza-x", "gemini"), ("sk-proj-x", "openai")]:
+        monkeypatch.setattr(llm.settings, "model_api_key", key)
+        assert llm.active_provider() == expected
+
+
+def test_a_model_api_key_builds_the_matching_client(unconfigured, monkeypatch):
+    monkeypatch.setattr(llm.settings, "model_api_key", "AIza-x")
+    assert isinstance(llm.from_settings(), GeminiClient)
+    monkeypatch.setattr(llm.settings, "model_api_key", "sk-ant-key")
+    assert llm.from_settings()._model == "claude-opus-5"
+
+
+def test_the_unified_key_wins_over_any_legacy_key(unconfigured, monkeypatch):
+    monkeypatch.setattr(llm.settings, "gemini_api_key", "legacy")
+    monkeypatch.setattr(llm.settings, "model_api_key", "sk-ant-key")
+    assert llm.active_provider() == "anthropic"
+
+
+def test_an_unrecognized_model_api_key_is_refused_with_guidance(unconfigured, monkeypatch):
+    monkeypatch.setattr(llm.settings, "model_api_key", "ollama")
+    assert llm.active_provider() is None
+    with pytest.raises(NotConfigured, match="Could not detect a provider from MODEL_API_KEY"):
+        llm.from_settings()
+
+
+def test_model_name_rides_over_the_providers_default(unconfigured, monkeypatch):
+    monkeypatch.setattr(llm.settings, "model_api_key", "AIza-x")
+    monkeypatch.setattr(llm.settings, "model_name", "gemini-2.0-flash")
+    assert llm.active_model() == "gemini-2.0-flash"
 
 
 def test_the_model_setting_overrides_any_providers_default(unconfigured, monkeypatch):

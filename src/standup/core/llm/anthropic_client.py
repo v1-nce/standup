@@ -28,6 +28,7 @@ class LLMClient:
     """The Anthropic half of the model seam."""
 
     default_model = "claude-opus-5"
+    key = "anthropic"
 
     def __init__(
         self,
@@ -40,7 +41,7 @@ class LLMClient:
         base_url: str | None = None,
     ) -> None:
         if not api_key:
-            raise NotConfigured("No API key. Set ANTHROPIC_API_KEY in .env")
+            raise NotConfigured("No API key. Set MODEL_API_KEY in .env")
         self._client = anthropic.AsyncAnthropic(
             api_key=api_key, base_url=base_url, timeout=timeout, max_retries=MAX_RETRIES
         )
@@ -52,17 +53,17 @@ class LLMClient:
 
     @staticmethod
     def configured() -> bool:
-        return bool(settings.anthropic_api_key)
+        return bool(settings.api_key_for("anthropic"))
 
     @classmethod
     def from_settings(cls) -> LLMClient:
         return cls(
-            api_key=settings.anthropic_api_key,
-            model=settings.llm_model or cls.default_model,
+            api_key=settings.api_key_for("anthropic"),
+            model=settings.model_for(cls.default_model),
             max_tokens=settings.llm_max_tokens,
             max_concurrency=settings.llm_max_concurrency,
             timeout=settings.llm_timeout_seconds,
-            base_url=settings.llm_base_url,
+            base_url=settings.base_url_for(),
         )
 
     async def text(

@@ -2,7 +2,7 @@
 OpenRouter, Groq, Together, and the rest — behind the same ModelClient contract.
 
 This is what makes Standup model agnostic rather than vendor specific: any model that speaks the
-OpenAI wire format works, pointed at by ``LLM_BASE_URL`` and named by ``LLM_MODEL``.
+OpenAI wire format works, pointed at by ``MODEL_BASE_URL`` and named by ``MODEL_NAME``.
 """
 
 from __future__ import annotations
@@ -37,8 +37,9 @@ def _spoken(body: dict[str, Any]) -> str:
 
 class OpenAIClient(JSONHTTPClient):
     provider = "OpenAI"
+    key = "openai"
     default_model = "gpt-4o-mini"
-    key_attr = "openai_api_key"
+    default_base_url = DEFAULT_BASE_URL
 
     def __init__(
         self,
@@ -52,7 +53,7 @@ class OpenAIClient(JSONHTTPClient):
     ) -> None:
         super().__init__(
             api_key=api_key,
-            key_env="OPENAI_API_KEY",
+            key_env="MODEL_API_KEY",
             model=model,
             max_tokens=max_tokens,
             max_concurrency=max_concurrency,
