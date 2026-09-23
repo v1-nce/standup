@@ -1,5 +1,6 @@
 import stat
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -7,7 +8,6 @@ from standup.config import (
     MODEL_CATALOG,
     Settings,
     canonical_model,
-    model_env_path,
     provider_from_key,
     save_model_api_key,
 )
@@ -100,9 +100,9 @@ def test_the_catalog_lists_the_default_first():
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits only")
 def test_save_model_api_key_restricts_file_and_dir_permissions(monkeypatch, tmp_path):
-    monkeypatch.setattr("standup.config.model_env_path", lambda: tmp_path / "home" / ".env")
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
     save_model_api_key("sk-ant-test")
 
-    env_path = model_env_path()
+    env_path = tmp_path / ".standup" / ".env"
     assert stat.S_IMODE(env_path.stat().st_mode) == 0o600
     assert stat.S_IMODE(env_path.parent.stat().st_mode) == 0o700
