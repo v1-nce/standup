@@ -68,7 +68,7 @@ decisions on record, not claims about the code.
 |---|---|
 | Anthropic SDK | `messages.parse()` + Pydantic gives schema-bound output with SDK-level retry. Default model `claude-opus-5` |
 | Gemini via AI Studio REST | A **free stand-in for development**, behind the same interface. The thinking models spend their whole budget before answering. Weaker at following the scope prompt than Opus; don't tune anything against it |
-| OpenAI-compatible REST | Any endpoint that speaks the OpenAI chat-completions wire format — OpenAI, OpenRouter, Groq, Ollama, LM Studio, vLLM. This is what makes Standup model agnostic: `LLM_BASE_URL` + `OPENAI_API_KEY` + `LLM_MODEL` point at any model |
+| OpenAI-compatible REST | Any endpoint that speaks the OpenAI chat-completions wire format — OpenAI, OpenRouter, Groq, Ollama, LM Studio, vLLM. This is what makes Standup model agnostic: `MODEL_API_KEY` (auto-detected from the key) points at any model, with `MODEL_BASE_URL` + `MODEL_NAME` for a gateway |
 | Vision, every provider | An attached image has no text to extract, so `read()` sends it as an image content block and caches the reply by content hash. **The one exception to "indexing never touches the model"** — everything else in the index is derived for free; an image's evidence costs one call, made once, at attach time |
 | Prompt caching | Stable repo prefix first, volatile content last (512-token minimum on Opus 5). **Not built** |
 | Batch API | **Benchmarks only.** 50% cheaper, hour-scale latency — fatal for interactive use. **Not built** |
@@ -82,7 +82,7 @@ Standup is installed and run on the user's own machine. It cannot call a model u
 | **Bring your own key** | The user pastes a provider key. Requests go straight to that provider. We never see the traffic and earn nothing. | User → provider |
 | **Subscription** | The user signs in. Requests route through our hosted gateway, which holds the real key. | User → us; we earn the margin |
 
-Both live behind one interface in `src/standup/core/llm/`. **Nothing outside that folder knows which path or provider is active** — not the stages, not the pipeline, not the API. BYOK spans three providers behind that seam (Anthropic, Gemini, any OpenAI-compatible endpoint), selected with `LLM_PROVIDER`/`LLM_MODEL`. Errors are mapped to the same typed failures regardless, or the abstraction leaks the first time a subscription lapses.
+Both live behind one interface in `src/standup/core/llm/`. **Nothing outside that folder knows which path or provider is active** — not the stages, not the pipeline, not the API. BYOK spans three providers behind that seam (Anthropic, Gemini, any OpenAI-compatible endpoint), selected with one `MODEL_API_KEY`, auto-detected from its shape (or `LLM_PROVIDER` explicitly). Errors are mapped to the same typed failures regardless, or the abstraction leaks the first time a subscription lapses.
 
 Subscription is the frictionless default and the revenue; BYOK is not a grudging fallback and must not rot. If a change makes one path work and the other break, it isn't done.
 

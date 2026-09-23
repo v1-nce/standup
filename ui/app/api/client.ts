@@ -7,6 +7,7 @@ export type ChatMessage = Schemas["ChatMessage"];
 export type Deck = Schemas["Deck"];
 export type Job = Schemas["Job"];
 export type Scored = Schemas["Scored"];
+export type ModelStatus = Schemas["ModelStatus"];
 
 const BASE = process.env.NODE_ENV === "development" ? "http://127.0.0.1:8000" : "";
 
@@ -97,4 +98,11 @@ export const api = {
         if (failure instanceof ApiError && failure.status === 404) return null;
         throw failure;
       }),
+
+  getModel: (): Promise<ModelStatus> => request("/model").then((r) => r.json()),
+
+  setModelKey: (apiKey: string): Promise<ModelStatus> =>
+    request("/model/key", { method: "POST", body: JSON.stringify({ api_key: apiKey }) }).then(
+      (r) => r.json(),
+    ),
 };

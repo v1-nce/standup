@@ -47,12 +47,11 @@ curl -fsSL https://raw.githubusercontent.com/v1-nce/standup/main/install.sh | sh
 irm https://raw.githubusercontent.com/v1-nce/standup/main/install.ps1 | iex
 ```
 
-Add one model key to `~/.standup/.env` (`%USERPROFILE%\.standup\.env` on Windows):
+On first run Standup asks for one model key in the browser and saves it for you. To do it by hand,
+add the key to `~/.standup/.env` (`%USERPROFILE%\.standup\.env` on Windows):
 
 ```
-GEMINI_API_KEY=
-# or
-ANTHROPIC_API_KEY=
+MODEL_API_KEY=
 ```
 
 ## Use

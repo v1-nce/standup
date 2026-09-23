@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { ChatPanel } from "@/app/components/ChatPanel";
 import { Composer } from "@/app/components/Composer";
+import { ConnectModel } from "@/app/components/ConnectModel";
 import { ContextModal } from "@/app/components/ContextModal";
 import { ErrorBanner } from "@/app/components/ErrorBanner";
 import { IconButton, MenuPath, MoonPath, SunPath } from "@/app/components/IconButton";
 import { Rail } from "@/app/components/Rail";
 import { Slides } from "@/app/components/Slides";
 import { useConversation } from "@/app/hooks/useConversation";
+import { useModel } from "@/app/hooks/useModel";
 import { useProjects } from "@/app/hooks/useProjects";
 import { useTheme } from "@/app/hooks/useTheme";
 
@@ -26,8 +28,14 @@ export default function Home() {
   const selectedProject = projects.projects.find((p) => p.id === selectedId);
   const { deck, error, loading, messages, pending, send } = useConversation(selectedId);
   const { dark, toggle: toggleTheme } = useTheme();
+  const model = useModel();
 
   const toggleRail = () => setRailOpen((open) => !open);
+
+  // First run: no key yet. Show the one-box setup and nothing else until a key lands.
+  if (model.status?.configured === false) {
+    return <ConnectModel error={model.error} onConnect={model.connect} />;
+  }
 
   return (
     <div className="flex h-dvh overflow-hidden">
