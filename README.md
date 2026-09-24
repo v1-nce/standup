@@ -2,6 +2,8 @@
   <img src="public/standup.png" alt="Standup" width="280" height="280">
 </p>
 
+<h1 align="center">Standup</h1>
+
 <p align="center">
   <img alt="macOS · Linux · Windows" src="https://img.shields.io/badge/macOS%20·%20Linux%20·%20Windows-555">
   <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white">
