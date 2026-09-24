@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1046 598" width="1046" height="598" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" fill="#111">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#111"/>
+    </marker>
+    <style>
+      .band { fill: #f6f7f8; stroke: #c9ced4; }
+      .chip { fill: #fff; stroke: #111; stroke-width: 1.2; }
+      .dark { fill: #111; stroke: #111; }
+      .bound { fill: none; stroke: #111; stroke-width: 1.2; stroke-dasharray: 6 5; }
+      .stage { font-size: 12px; font-weight: 700; letter-spacing: 1.6px; }
+      .note { font-size: 11px; fill: #6a737d; }
+      .t { font-size: 13.5px; font-weight: 600; text-anchor: middle; }
+      .s { font-size: 11.5px; fill: #57606a; text-anchor: middle; }
+      .w { fill: #fff; }
+      .ws { fill: #c9ced4; }
+      .edge { fill: none; stroke: #111; stroke-width: 1.3; marker-end: url(#a); }
+      .both { marker-start: url(#a); }
+      .dash { stroke-dasharray: 5 4; }
+      .lbl { font-size: 11px; fill: #57606a; }
+      .mono { font-family: ui-monospace, 'SF Mono', Consolas, monospace; font-size: 10.5px; fill: #57606a; }
+    </style>
+  </defs>
+  <rect width="1046" height="598" rx="16" fill="#fff" stroke="#d0d7de"/>
+
+  <!-- providers -->
+  <rect x="16" y="16" width="164" height="566" rx="10" class="band"/>
+  <text class="stage" x="28" y="40">PROVIDERS</text>
+  <text class="note" x="28" y="57">bounded context only</text>
+  <rect class="chip" x="28" y="150" width="140" height="44" rx="6"/>
+  <text class="t" x="98" y="169">Anthropic</text><text class="s" x="98" y="185">Claude</text>
+  <rect class="chip" x="28" y="204" width="140" height="44" rx="6"/>
+  <text class="t" x="98" y="223">Gemini</text><text class="s" x="98" y="239">AI Studio</text>
+  <rect class="chip" x="28" y="258" width="140" height="44" rx="6"/>
+  <text class="t" x="98" y="277">OpenAI-compatible</text><text class="s" x="98" y="293">Ollama · Groq · vLLM</text>
+  <text class="note" x="98" y="324" text-anchor="middle">BYOK or subscription</text>
+  <text class="note" x="98" y="340" text-anchor="middle">one seam · typed errors</text>
+
+  <!-- local boundary -->
+  <rect class="bound" x="196" y="16" width="834" height="566" rx="10"/>
+  <text class="stage" x="212" y="40">YOUR MACHINE</text>
+  <text class="note" x="1016" y="40" text-anchor="end">local-first · resources never uploaded</text>
+
+  <!-- INTERFACE -->
+  <rect class="band" x="208" y="52" width="764" height="90" rx="8"/>
+  <text class="stage" x="220" y="72">INTERFACE</text>
+  <rect class="chip" x="220" y="84" width="172" height="46" rx="6"/>
+  <text class="t" x="306" y="103">Browser UI</text><text class="s" x="306" y="120">chat · preview · .pptx</text>
+  <rect class="chip" x="408" y="84" width="172" height="46" rx="6"/>
+  <text class="t" x="494" y="103">FastAPI</text><text class="s" x="494" y="120">OpenAPI-typed client</text>
+  <rect class="chip" x="596" y="84" width="172" height="46" rx="6"/>
+  <text class="t" x="682" y="103">Job queue</text><text class="s" x="682" y="120">one per project</text>
+  <path class="chip" d="M784,90 a86,7 0 0 1 172,0 v38 a86,7 0 0 1 -172,0 z"/>
+  <path d="M784,90 a86,7 0 0 0 172,0" fill="none" stroke="#111" stroke-width="1.2"/>
+  <text class="t" x="870" y="112">Project store</text><text class="s" x="870" y="127">chat · deck · trace</text>
+  <path class="edge both" d="M393,107 H406"/>
+  <path class="edge" d="M581,107 H594"/>
+
+  <!-- AGENT -->
+  <rect class="band" x="208" y="158" width="764" height="110" rx="8"/>
+  <text class="stage" x="220" y="178">AGENT</text>
+  <text class="note" x="960" y="178" text-anchor="end">one owner · ≤ 4 model calls per deck</text>
+  <rect class="dark" x="220" y="192" width="172" height="46" rx="6"/>
+  <text class="t w" x="306" y="211">Director</text><text class="s ws" x="306" y="228">plans · reads · cuts</text>
+  <rect class="chip" x="408" y="192" width="172" height="46" rx="6"/>
+  <text class="t" x="494" y="211">keep · write</text><text class="s" x="494" y="228">exact edits only</text>
+  <rect class="chip" x="596" y="192" width="172" height="46" rx="6"/>
+  <text class="t" x="682" y="211">Validate</text><text class="s" x="682" y="228">grounded in index?</text>
+  <rect class="chip" x="784" y="192" width="172" height="46" rx="6"/>
+  <text class="t" x="870" y="211">Persist</text><text class="s" x="870" y="228">atomic · last valid kept</text>
+  <path class="edge" d="M393,215 H406"/>
+  <path class="edge" d="M581,215 H594"/>
+  <path class="edge" d="M769,215 H782"/>
+  <path class="edge" d="M660,239 C660,262 516,262 516,241"/>
+  <text class="lbl" x="672" y="258">reject → repair</text>
+
+  <!-- cross-band edges -->
+  <path class="edge" d="M682,131 V150 H306 V190"/>
+  <path class="edge" d="M870,191 V137"/>
+  <path class="edge both" d="M220,215 H183"/>
+  <path class="edge both" d="M350,240 V316"/>
+  <text class="lbl" x="358" y="279">select → shortlist</text>
+
+  <!-- SELECT -->
+  <rect class="band" x="208" y="284" width="764" height="120" rx="8"/>
+  <text class="stage" x="220" y="304">SELECT</text>
+  <text class="note" x="960" y="304" text-anchor="end">deterministic · scores never shown to the model</text>
+  <rect class="chip" x="220" y="318" width="172" height="46" rx="6"/>
+  <text class="t" x="306" y="337">Scope</text><text class="s" x="306" y="354">paths · keywords · window</text>
+  <rect class="chip" x="408" y="318" width="172" height="46" rx="6"/>
+  <text class="t" x="494" y="337">6 signals</text><text class="s" x="494" y="354">min-max → [0, 1]</text>
+  <rect class="chip" x="596" y="318" width="172" height="46" rx="6"/>
+  <text class="t" x="682" y="337">Relevance</text><text class="s" x="682" y="354">Σ wᵢ · ŝᵢ</text>
+  <rect class="chip" x="784" y="318" width="172" height="46" rx="6"/>
+  <text class="t" x="870" y="337">MMR</text><text class="s" x="870" y="354">λ = 0.95 · 3× shortlist</text>
+  <path class="edge" d="M393,341 H406"/>
+  <path class="edge" d="M581,341 H594"/>
+  <path class="edge" d="M769,341 H782"/>
+  <text class="mono" x="408" y="388">w: affinity 1.5 · churn 1 · recency 1 · centrality 1 · emphasis 0.6 · memory 0.5</text>
+
+  <!-- INDEX -->
+  <rect class="band" x="208" y="420" width="764" height="150" rx="8"/>
+  <text class="stage" x="220" y="440">INDEX</text>
+  <text class="note" x="960" y="440" text-anchor="end">offline · once per resource · content-hashed</text>
+  <path class="chip" d="M220,470 a86,8 0 0 1 172,0 v68 a86,8 0 0 1 -172,0 z"/>
+  <path d="M220,470 a86,8 0 0 0 172,0" fill="none" stroke="#111" stroke-width="1.2"/>
+  <text class="t" x="306" y="502">Index cache</text><text class="s" x="306" y="519">merged · ranked once</text>
+  <rect class="chip" x="408" y="454" width="172" height="46" rx="6"/>
+  <text class="t" x="494" y="473">Code</text><text class="s" x="494" y="490">tree-sitter · 100+ langs</text>
+  <rect class="chip" x="596" y="454" width="172" height="46" rx="6"/>
+  <text class="t" x="682" y="473">Import graph</text><text class="s" x="682" y="490">PageRank · d = 0.85</text>
+  <rect class="chip" x="784" y="454" width="172" height="46" rx="6"/>
+  <text class="t" x="870" y="473">Git history</text><text class="s" x="870" y="490">churn · recency · authors</text>
+  <rect class="chip" x="408" y="510" width="172" height="46" rx="6"/>
+  <text class="t" x="494" y="529">Documents</text><text class="s" x="494" y="546">PDF · DOCX · XLSX · PPTX</text>
+  <rect class="chip" x="596" y="510" width="172" height="46" rx="6"/>
+  <text class="t" x="682" y="529">Images</text><text class="s" x="682" y="546">vision, once, cached</text>
+  <rect class="chip" x="784" y="510" width="172" height="46" rx="6"/>
+  <text class="t" x="870" y="529">Doc emphasis</text><text class="s" x="870" y="546">what your docs stress</text>
+  <path class="edge" d="M406,505 H394"/>
+  <path class="edge" d="M306,461 V366"/>
+
+  <!-- self-improving loop -->
+  <path class="edge dash" d="M957,107 H996 V341 H975"/>
+  <text class="lbl" x="1012" y="224" text-anchor="middle" transform="rotate(90 1012 224)">kept / cut → memory signal</text>
+</svg>
